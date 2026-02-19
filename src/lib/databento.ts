@@ -6,17 +6,11 @@
 import { Bar } from './screener';
 
 export const CURATED_UNIVERSE = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'INTC', 'CSCO', 'CMCSA',
-  'NFLX', 'PYPL', 'ADBE', 'INTU', 'NOW', 'AMAT', 'LRCX', 'ASML', 'QCOM', 'AMD',
-  'AVGO', 'MU', 'SNPS', 'MCHP', 'CDNS', 'NXPI', 'MRVL', 'PSTG', 'CRWD', 'ZS',
-  'OKTA', 'DDOG', 'NET', 'FTNT', 'ORCL', 'SHOP', 'UBER', 'DASH', 'RBLX', 'CHWY',
-  'ABNB', 'LYFT', 'ROKU', 'COIN', 'MDB', 'SNOW', 'TWLO', 'ZM', 'WDAY', 'VEEV',
-  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLSK', 'CPRT', 'UPST', 'BILL',
-  'SMCI', 'PANW', 'MNST', 'TEAM', 'TTD', 'TOST', 'DUOL', 'ARM', 'ON', 'MELI',
-  'LULU', 'COST', 'PDD', 'JD', 'BIDU', 'REGN', 'GILD', 'ILMN', 'ISRG', 'MRNA',
-  'BIIB', 'AMGN', 'ADP', 'SBUX', 'MDLZ', 'ADI', 'KLAC', 'KDP', 'CTAS', 'EXC',
-  'XEL', 'EA', 'VRSK', 'ANSS', 'IDXX', 'TTWO', 'FAST', 'FANG', 'ODFL', 'GEHC',
-];
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'NFLX', 'AMD',
+  'ADBE', 'INTU', 'NOW', 'AMAT', 'LRCX', 'ASML', 'QCOM', 'CRWD', 'PANW', 'ORCL',
+  'SHOP', 'UBER', 'COIN', 'SNOW', 'DDOG', 'NET', 'ARM', 'SMCI', 'MELI', 'COST',
+  'ISRG', 'REGN', 'LULU', 'TTD', 'MSTR', 'HOOD', 'DUOL', 'MNST', 'FTNT', 'ON',
+]
 
 /**
  * Format date as YYYYMMDD string
@@ -129,7 +123,7 @@ export async function fetchBars(
   end: string
 ): Promise<Record<string, Bar[]>> {
   const result: Record<string, Bar[]> = {};
-  const concurrency = 25;
+  const concurrency = 40;
 
   for (let i = 0; i < symbols.length; i += concurrency) {
     const batch = symbols.slice(i, Math.min(i + concurrency, symbols.length));
