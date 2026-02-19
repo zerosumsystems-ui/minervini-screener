@@ -141,6 +141,7 @@ export function getDateRange(tradingDaysBack: number = 252): {
   end: string;
 } {
   const end = new Date();
+  end.setDate(end.getDate() - 1);
   const start = new Date(end.getTime() - (tradingDaysBack / 252) * 365.25 * 24 * 60 * 60 * 1000);
   return {
     start: formatDate(start),
