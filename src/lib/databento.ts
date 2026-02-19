@@ -129,7 +129,7 @@ export async function fetchBars(
   end: string
 ): Promise<Record<string, Bar[]>> {
   const result: Record<string, Bar[]> = {};
-  const concurrency = 10;
+  const concurrency = 25;
 
   for (let i = 0; i < symbols.length; i += concurrency) {
     const batch = symbols.slice(i, Math.min(i + concurrency, symbols.length));
