@@ -101,7 +101,7 @@ async function fetchBarsBatch(
     try {
       const record: DatabentoRecord = JSON.parse(line);
       const symbol = (record.symbol || 'UNKNOWN').trim();
-      if (!result[symbol]) { result[symbol] = []; }
+      if (!result[symbol]) result[symbol] = [];
       result[symbol].push({
         date: tsToDateString(record.ts_event),
         open: record.open / 1e9,
@@ -141,7 +141,6 @@ export function getDateRange(tradingDaysBack: number = 252): {
   end: string;
 } {
   const end = new Date();
-  end.setDate(end.getDate() - 1);
   const start = new Date(end.getTime() - (tradingDaysBack / 252) * 365.25 * 24 * 60 * 60 * 1000);
   return {
     start: formatDate(start),
