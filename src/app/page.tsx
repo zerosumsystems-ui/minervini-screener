@@ -3,268 +3,390 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 
-const SYMBOLS = [
-  "NVDA", "AAPL", "MSFT", "META", "GOOGL", "AMZN", "TSLA", "AVGO", "AMD", "CRWD",
-  "PANW", "SMCI", "PLTR", "ARM", "AXON", "CAVA", "DECK", "HIMS", "DUOL", "ELF",
-  "ONON", "CELH", "DDOG", "NET", "SNOW", "LLY", "COST", "CMG", "COIN", "NFLX",
-];
+interface ScreenerResult {
+  symbol: string;
+  price: number;
+  rs: number;
+  grade: string;
+  passesTemplate: boolean;
+  passesVcp: boolean;
+  passesBreakout: boolean;
+  passesLiquidity: boolean;
+  distance52wLow: number;
+  distance52wHigh: number;
+  ma50: number;
+  ma150: number;
+  ma200: number;
+  atr: number;
+}
 
-const PRICE_MAP: Record<string, number> = {
-  NVDA: 145.2, AAPL: 187.5, MSFT: 421.8, META: 562.3, GOOGL: 178.4,
-  AMZN: 195.7, TSLA: 285.1, AVGO: 168.9, AMD: 145.6, CRWD: 382.4,
-  PANW: 418.7, SMCI: 31.2, PLTR: 42.8, ARM: 165.3, AXON: 412.6,
-  CAVA: 89.5, DECK: 782.3, HIMS: 29.4, DUOL: 31.8, ELF: 58.2,
-  ONON: 24.7, CELH: 81.2, DDOG: 198.5, NET: 76.4, SNOW: 145.8,
-  LLY: 892.1, COST: 934.5, CMG: 47.3, COIN: 193.2, NFLX: 287.4,
-};
+interface BarData {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
 
-function generateDemoData(seed = 0) {
-  const random = (min: number, max: number): number => {
-    const rand = Math.sin(seed++) * 10000;
-    return min + ((rand - Math.floor(rand)) * (max - min));
-  };
-  const breakoutSymbols = SYMBOLS.slice(0, 3);
-  const vcpSymbols = SYMBOLS.slice(3, 9);
-  const monitorSymbols = SYMBOLS.slice(9);
-  const createStock = (symbol: string, stage: string) => {
-    const basePrice = PRICE_MAP[symbol];
-    return {
-      id: symbol, symbol,
-      price: parseFloat((basePrice + (random(-5, 5) * 0.5)).toFixed(2)),
-      ttPass: stage !== "breakout", ttScore: Math.floor(random(3, 9)),
-      ma50: parseFloat((basePrice * random(0.95, 1.02)).toFixed(2)),
-      ma150: parseFloat((basePrice * random(0.9, 1.05)).toFixed(2)),
-      ma200: parseFloat((basePrice * random(0.88, 1.08)).toFixed(2)),
-      pctAboveLow: Math.round(random(20, 95)), pctBelowHigh: Math.round(random(5, 45)),
-      rsPct: Math.round(random(55, 99)), vcpPass: stage === "vcp" || Math.random() > 0.5,
-      atrRatio: parseFloat(random(0.3, 0.9).toFixed(2)),
-      volRatio: parseFloat(random(0.3, 0.9).toFixed(2)),
-      range10dPct: parseFloat(random(1, 12).toFixed(2)), bbSqueeze: Math.random() > 0.6,
-      breakout: stage === "breakout",
-      boQuality: stage === "breakout" ? ["A", "B"][Math.floor(random(0, 2))] : "none",
-      pivot: parseFloat((basePrice * random(0.95, 1.05)).toFixed(2)),
-      rvol: parseFloat(random(0.8, 2.5).toFixed(2)),
-      priorityScore: Math.floor(random(3, 10)), stage,
-    };
-  };
-  const stocks = [
-    ...breakoutSymbols.map((s) => createStock(s, "breakout")),
-    ...vcpSymbols.map((s) => createStock(s, "vcp")),
-    ...monitorSymbols.map((s) => createStock(s, "monitor")),
-  ];
-  return stocks.sort((a, b) => b.priorityScore - a.priorityScore);
+function MiniChart({ bars }: { bars: BarData[] }) {
+  if (bars.length < 2) return <div className="text-gray-500 text-sm p-4">Not enough data</div>;
+  const W = 700;
+  const H = 200;
+  const PAD = 30;
+  const closes = bars.map((b) => b.close);
+  const volumes = bars.map((b) => b.volume);
+  const minP = Math.min(...closes) * 0.995;
+  const maxP = Math.max(...closes) * 1.005;
+  const maxV = Math.max(...volumes);
+  const xStep = (W - PAD * 2) / (bars.length - 1);
+  const yScale = (v: number) => PAD + ((maxP - v) / (maxP - minP)) * (H - PAD * 2);
+  const pricePath = closes.map((c, i) => `${i === 0 ? "M" : "L"}${PAD + i * xStep},${yScale(c)}`).join(" ");
+  const areaPath = pricePath + ` L${PAD + (closes.length - 1) * xStep},${H - PAD} L${PAD},${H - PAD} Z`;
+  const ma20: (number | null)[] = closes.map((_, i) => {
+    if (i < 19) return null;
+    const slice = closes.slice(i - 19, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / 20;
+  });
+  const ma20Path = ma20
+    .map((v, i) => (v !== null ? `${ma20.slice(0, i).some((x) => x !== null) ? "L" : "M"}${PAD + i * xStep},${yScale(v)}` : ""))
+    .filter(Boolean)
+    .join(" ");
+  const last = closes[closes.length - 1];
+  const first = closes[0];
+  const change = ((last - first) / first * 100).toFixed(1);
+  const isUp = last >= first;
+  return (
+    <div className="p-4">
+      <div className="flex items-center gap-4 mb-2 text-xs text-gray-400">
+        <span>Close: <span className="text-gray-100 font-mono">${last.toFixed(2)}</span></span>
+        <span className={isUp ? "text-emerald-400" : "text-red-400"}>{isUp ? "+" : ""}{change}%</span>
+        <span>High: <span className="font-mono">${Math.max(...closes).toFixed(2)}</span></span>
+        <span>Low: <span className="font-mono">${Math.min(...closes).toFixed(2)}</span></span>
+        <span className="text-gray-600">120 days</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 200 }}>
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={isUp ? "#10b981" : "#ef4444"} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={isUp ? "#10b981" : "#ef4444"} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+          const y = PAD + f * (H - PAD * 2);
+          const price = maxP - f * (maxP - minP);
+          return (
+            <g key={f}>
+              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#1f2937" strokeWidth="0.5" />
+              <text x={PAD - 4} y={y + 3} textAnchor="end" fill="#6b7280" fontSize="8">${price.toFixed(0)}</text>
+            </g>
+          );
+        })}
+        {bars.map((b, i) => {
+          const bH = (b.volume / maxV) * 30;
+          return (
+            <rect key={i} x={PAD + i * xStep - xStep * 0.3} y={H - PAD - bH} width={Math.max(xStep * 0.6, 1)} height={bH} fill="#374151" opacity="0.5" />
+          );
+        })}
+        <path d={areaPath} fill="url(#areaGrad)" />
+        <path d={pricePath} fill="none" stroke={isUp ? "#10b981" : "#ef4444"} strokeWidth="1.5" />
+        {ma20Path && <path d={ma20Path} fill="none" stroke="#facc15" strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />}
+      </svg>
+      <div className="flex gap-4 mt-1 text-[10px] text-gray-500">
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: isUp ? "#10b981" : "#ef4444" }} /> Price</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 border-t border-dashed border-yellow-500" /> 20MA</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 bg-gray-700 opacity-50" /> Volume</span>
+      </div>
+    </div>
+  );
 }
 
 function MinerviniScreener() {
-  const [data, setData] = useState(() => generateDemoData());
+  const [data, setData] = useState<ScreenerResult[]>([]);
   const [activeTab, setActiveTab] = useState("breakout");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [chartBars, setChartBars] = useState<Record<string, BarData[]>>({});
+  const [chartLoading, setChartLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortColumn, setSortColumn] = useState("priorityScore");
+  const [sortColumn, setSortColumn] = useState("rs");
   const [sortDirection, setSortDirection] = useState("desc");
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [toast, setToast] = useState("");
-  const tabCounts = useMemo(() => {
-    const breakouts = data.filter((s) => s.stage === "breakout").length;
-    const vcp = data.filter((s) => s.stage === "vcp").length;
-    const monitor = data.filter((s) => s.stage === "monitor").length;
+  const [ran, setRan] = useState(false);
+
+  const categorized = useMemo(() => {
+    const breakouts = data.filter((s) => s.passesBreakout);
+    const vcp = data.filter((s) => s.passesVcp && !s.passesBreakout);
+    const monitor = data.filter((s) => s.passesTemplate && !s.passesBreakout && !s.passesVcp);
     return { breakout: breakouts, vcp, monitor };
   }, [data]);
+
+  const tabCounts = useMemo(() => ({
+    breakout: categorized.breakout.length,
+    vcp: categorized.vcp.length,
+    monitor: categorized.monitor.length,
+  }), [categorized]);
+
   const filteredData = useMemo(() => {
-    let filtered = data.filter((s) => s.stage === activeTab);
+    let list = categorized[activeTab] || [];
     if (searchQuery) {
-      const query = searchQuery.toUpperCase();
-      filtered = filtered.filter((s) => s.symbol.includes(query));
+      const q = searchQuery.toUpperCase();
+      list = list.filter((s) => s.symbol.includes(q));
     }
-    filtered.sort((a, b) => {
+    list = [...list].sort((a, b) => {
       const aVal = (a as any)[sortColumn];
       const bVal = (b as any)[sortColumn];
-      if (typeof aVal === "string") {
-        return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
+      if (typeof aVal === "string") return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
     });
-    return filtered;
-  }, [data, activeTab, searchQuery, sortColumn, sortDirection]);
-  const selectedStock = useMemo(() => data.find((s) => s.id === selectedId), [data, selectedId]);
-  const handleSort = useCallback((column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else { setSortColumn(column); setSortDirection("desc"); }
+    return list;
+  }, [categorized, activeTab, searchQuery, sortColumn, sortDirection]);
+
+  const handleSort = useCallback((col: string) => {
+    if (sortColumn === col) setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    else { setSortColumn(col); setSortDirection("desc"); }
   }, [sortColumn, sortDirection]);
-  const handleDemo = () => {
-    setData(generateDemoData(Date.now())); setSelectedId(null);
-    setToast("Demo data regenerated"); setTimeout(() => setToast(""), 2000);
-  };
+
   const handleRunScreener = async () => {
-    if (!apiKey) { setToast("Please enter an API key"); setTimeout(() => setToast(""), 2000); return; }
+    if (!apiKey) { setToast("Enter your Databento API key"); setTimeout(() => setToast(""), 3000); return; }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setToast("API connection coming soon — use demo data for now");
-      setTimeout(() => setToast(""), 3000);
-    }, 2000);
+    setToast("");
+    try {
+      const res = await fetch("/api/screener", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setToast(json.error || "Screener failed");
+        setTimeout(() => setToast(""), 5000);
+      } else {
+        setData(json.results || []);
+        setRan(true);
+        setToast(`Screened ${json.resultsCount} stocks`);
+        setTimeout(() => setToast(""), 3000);
+      }
+    } catch (e) {
+      setToast("Network error — check your connection");
+      setTimeout(() => setToast(""), 5000);
+    }
+    setLoading(false);
   };
+
+  const handleRowClick = async (symbol: string) => {
+    if (expandedSymbol === symbol) { setExpandedSymbol(null); return; }
+    setExpandedSymbol(symbol);
+    if (chartBars[symbol]) return;
+    setChartLoading(symbol);
+    try {
+      const res = await fetch("/api/chart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, symbol }),
+      });
+      const json = await res.json();
+      if (json.success && json.bars) {
+        setChartBars((prev) => ({ ...prev, [symbol]: json.bars }));
+      }
+    } catch {
+      // silent
+    }
+    setChartLoading(null);
+  };
+
   const getTabColumns = () => {
     switch (activeTab) {
       case "breakout":
         return [
-          { key: "symbol", label: "Symbol", width: "w-20" },
-          { key: "price", label: "Price", width: "w-24" },
-          { key: "rsPct", label: "RS %", width: "w-20" },
-          { key: "rvol", label: "RVOL", width: "w-20" },
-          { key: "boQuality", label: "Grade", width: "w-20" },
-          { key: "priorityScore", label: "Score", width: "w-20" },
+          { key: "symbol", label: "Symbol" },
+          { key: "price", label: "Price" },
+          { key: "rs", label: "RS" },
+          { key: "grade", label: "Grade" },
+          { key: "distance52wHigh", label: "% of 52w Hi" },
+          { key: "atr", label: "ATR" },
         ];
       case "vcp":
         return [
-          { key: "symbol", label: "Symbol", width: "w-20" },
-          { key: "price", label: "Price", width: "w-24" },
-          { key: "rsPct", label: "RS %", width: "w-20" },
-          { key: "atrRatio", label: "ATR Ratio", width: "w-24" },
-          { key: "volRatio", label: "Vol Ratio", width: "w-24" },
-          { key: "range10dPct", label: "Range %", width: "w-20" },
-          { key: "bbSqueeze", label: "BB", width: "w-16" },
-          { key: "priorityScore", label: "Score", width: "w-20" },
+          { key: "symbol", label: "Symbol" },
+          { key: "price", label: "Price" },
+          { key: "rs", label: "RS" },
+          { key: "distance52wHigh", label: "% of 52w Hi" },
+          { key: "ma50", label: "50MA" },
+          { key: "atr", label: "ATR" },
         ];
       default:
         return [
-          { key: "symbol", label: "Symbol", width: "w-20" },
-          { key: "price", label: "Price", width: "w-24" },
-          { key: "rsPct", label: "RS %", width: "w-20" },
-          { key: "ttScore", label: "TT Score", width: "w-20" },
-          { key: "pctBelowHigh", label: "%Below High", width: "w-24" },
-          { key: "priorityScore", label: "Score", width: "w-20" },
+          { key: "symbol", label: "Symbol" },
+          { key: "price", label: "Price" },
+          { key: "rs", label: "RS" },
+          { key: "distance52wLow", label: "vs 52w Lo" },
+          { key: "distance52wHigh", label: "% of 52w Hi" },
+          { key: "ma50", label: "50MA" },
         ];
     }
   };
+
   const formatValue = (val: any, key: string) => {
-    if (key === "price") return `$${val.toFixed(2)}`;
-    if (key === "rvol" || key === "atrRatio" || key === "volRatio") return val.toFixed(2);
-    if (key === "range10dPct") return `${val.toFixed(1)}%`;
-    if (key === "bbSqueeze") return val ? "✓" : "—";
-    return val;
+    if (val === undefined || val === null) return "—";
+    if (key === "price" || key === "ma50" || key === "ma150" || key === "ma200") return `$${Number(val).toFixed(2)}`;
+    if (key === "atr") return Number(val).toFixed(2);
+    if (key === "distance52wHigh") return `${(Number(val) * 100).toFixed(0)}%`;
+    if (key === "distance52wLow") return `${(Number(val) * 100).toFixed(0)}%`;
+    if (key === "rs") return Number(val).toFixed(0);
+    return String(val);
   };
+
   const getRsColor = (rs: number) => {
     if (rs >= 90) return "text-yellow-400 font-semibold";
     if (rs >= 70) return "text-emerald-400 font-semibold";
     return "text-gray-400";
   };
+
   const getGradeColor = (grade: string) => {
     if (grade === "A") return "text-emerald-400 font-bold";
     if (grade === "B") return "text-amber-400 font-bold";
-    if (grade === "C") return "text-red-400 font-bold";
     return "text-gray-500";
   };
+
   return (
     <div className="min-h-screen bg-[#030712] text-gray-100 font-sans">
       <div className="bg-gradient-to-b from-gray-900/80 to-transparent border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold text-white">Minervini</span>
               <span className="text-2xl font-bold text-yellow-400">SEPA</span>
             </div>
             <div className="flex items-center gap-3">
-              <input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 placeholder-gray-500 w-40 focus:outline-none focus:border-gray-600" />
-              <button onClick={handleRunScreener} disabled={loading} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-semibold rounded transition disabled:opacity-50">
+              <input type="password" placeholder="Databento API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 placeholder-gray-500 w-52 focus:outline-none focus:border-gray-600"
+                onKeyDown={(e) => { if (e.key === "Enter") handleRunScreener(); }} />
+              <button onClick={handleRunScreener} disabled={loading}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-semibold rounded transition disabled:opacity-50 min-w-[120px]">
                 {loading ? "Screening..." : "Run Screener"}
               </button>
-              <button onClick={handleDemo} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded transition">Demo</button>
             </div>
           </div>
-          <div className="text-xs text-gray-500 font-mono">
-            Ready — {tabCounts.breakout} breakouts · {tabCounts.vcp} VCP ·{" "}{tabCounts.monitor} monitoring
-          </div>
+          {ran && (
+            <div className="text-xs text-gray-500 font-mono">
+              {data.length} results — {tabCounts.breakout} breakouts · {tabCounts.vcp} VCP · {tabCounts.monitor} trend template
+            </div>
+          )}
           {toast && (<div className="mt-3 px-3 py-2 bg-blue-500/20 border border-blue-500/50 rounded text-blue-300 text-sm">{toast}</div>)}
         </div>
       </div>
+
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="mb-6 border-b border-gray-800">
-          <div className="flex gap-2">
-            {[
-              { id: "breakout", label: "🔥 Breakouts", count: tabCounts.breakout },
-              { id: "vcp", label: "🎯 VCP", count: tabCounts.vcp },
-              { id: "monitor", label: "📊 Monitor", count: tabCounts.monitor },
-            ].map((tab) => (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSelectedId(null); setSortColumn("priorityScore"); setSortDirection("desc"); }}
-                className={`px-4 py-3 font-semibold text-sm border-b-2 transition ${activeTab === tab.id ? "border-emerald-400 text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-300"}`}>
-                {tab.label} ({tab.count})
-              </button>
-            ))}
+        {!ran && !loading && (
+          <div className="text-center py-20 text-gray-500">
+            <div className="text-6xl mb-4">📈</div>
+            <div className="text-xl mb-2">Enter your Databento API key and hit Run Screener</div>
+            <div className="text-sm">Screens ~100 liquid US stocks using Minervini SEPA criteria</div>
           </div>
-        </div>
-        <div className="mb-4">
-          <input type="text" placeholder="Search by symbol..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 placeholder-gray-500 w-48 focus:outline-none focus:border-gray-600" />
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-800/50 border-b border-gray-800">
-              <tr>
-                {getTabColumns().map((col) => (
-                  <th key={col.key} onClick={() => handleSort(col.key)} className={`px-4 py-3 text-left font-semibold text-gray-400 cursor-pointer hover:text-gray-200 transition ${col.width}`}>
-                    {col.label}
-                    {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>)}
-                  </th>
+        )}
+        {loading && (
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4 animate-pulse">⏳</div>
+            <div className="text-gray-400">Fetching data from Databento and running screener...</div>
+            <div className="text-gray-600 text-sm mt-1">This may take up to 60 seconds</div>
+          </div>
+        )}
+        {ran && !loading && (
+          <>
+            <div className="mb-6 border-b border-gray-800">
+              <div className="flex gap-2">
+                {[
+                  { id: "breakout", label: "🔥 Breakouts", count: tabCounts.breakout },
+                  { id: "vcp", label: "🎯 VCP", count: tabCounts.vcp },
+                  { id: "monitor", label: "📊 Trend Template", count: tabCounts.monitor },
+                ].map((tab) => (
+                  <button key={tab.id} onClick={() => { setActiveTab(tab.id); setExpandedSymbol(null); }}
+                    className={`px-4 py-3 font-semibold text-sm border-b-2 transition ${activeTab === tab.id ? "border-emerald-400 text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-300"}`}>
+                    {tab.label} ({tab.count})
+                  </button>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No stocks found</td></tr>
-              ) : (
-                filteredData.map((stock) => (
-                  <tr key={stock.id} onClick={() => setSelectedId(stock.id)} className={`border-b border-gray-800 cursor-pointer transition ${selectedId === stock.id ? "bg-gray-800/60" : "hover:bg-gray-800/30"}`}>
-                    {getTabColumns().map((col) => {
-                      const val = (stock as Record<string, unknown>)[col.key];
-                      let cellClass = "px-4 py-3 text-gray-200";
-                      if (col.key === "price") cellClass += " font-mono text-right";
-                      if (col.key === "rsPct") cellClass += ` font-mono ${getRsColor(val)}`;
-                      if (col.key === "boQuality") cellClass += ` font-mono ${getGradeColor(val)}`;
-                      if (["rvol", "atrRatio", "volRatio", "ttScore", "priorityScore"].includes(col.key)) cellClass += " font-mono text-right text-gray-300";
-                      if (col.key === "bbSqueeze") cellClass += ` font-mono text-center ${val ? "text-emerald-400" : ""}`;
-                      if (["range10dPct", "pctBelowHigh"].includes(col.key)) cellClass += " font-mono text-right text-gray-300";
-                      return (<td key={col.key} className={cellClass}>{formatValue(val, col.key)}</td>);
-                    })}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {selectedStock && (
-          <div className="mt-6 p-6 bg-gray-900 border border-gray-800 rounded-lg">
-            <div className="grid grid-cols-3 gap-8">
-              <div>
-                <div className="text-gray-500 text-xs uppercase tracking-wide mb-1">Symbol</div>
-                <div className="text-3xl font-bold text-white mb-4">{selectedStock.symbol}</div>
-                <div className="space-y-2 text-sm">
-                  <div><span className="text-gray-500">Price:</span><span className="text-gray-100 ml-2 font-mono font-semibold">${selectedStock.price.toFixed(2)}</span></div>
-                  <div><span className="text-gray-500">RS %:</span><span className={`ml-2 font-mono font-semibold ${getRsColor(selectedStock.rsPct)}`}>{selectedStock.rsPct}</span></div>
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase tracking-wide mb-3">Setup Details</div>
-                <div className="space-y-2 text-sm">
-                  <div><span className="text-gray-500">Stage:</span><span className="text-gray-100 ml-2 font-semibold capitalize">{selectedStock.stage}</span></div>
-                  {selectedStock.stage === "breakout" && (
-                    <div><span className="text-gray-500">Grade:</span><span className={`ml-2 font-mono font-bold ${getGradeColor(selectedStock.boQuality)}`}>{selectedStock.boQuality}</span></div>
-                  )}
-                  <div><span className="text-gray-500">RVOL:</span><span className="text-gray-100 ml-2 font-mono">{selectedStock.rvol.toFixed(2)}x</span></div>
-                  <div><span className="text-gray-500">Priority:</span><span className="text-amber-400 ml-2 font-mono font-semibold">{selectedStock.priorityScore}</span></div>
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase tracking-wide mb-3">Key Metrics</div>
-                <div className="space-y-2 text-sm">
-                  <div><span className="text-gray-500">50MA:</span><span className="text-gray-100 ml-2 font-mono">${selectedStock.ma50.toFixed(2)}</span></div>
-                  <div><span className="text-gray-500">200MA:</span><span className="text-gray-100 ml-2 font-mono">${selectedStock.ma200.toFixed(2)}</span></div>
-                  <div><span className="text-gray-500">BB Squeeze:</span><span className={`ml-2 ${selectedStock.bbSqueeze ? "text-emerald-400 font-semibold" : "text-gray-500"}`}>{selectedStock.bbSqueeze ? "Yes" : "No"}</span></div>
-                </div>
               </div>
             </div>
-          </div>
+            <div className="mb-4">
+              <input type="text" placeholder="Search symbol..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 placeholder-gray-500 w-48 focus:outline-none focus:border-gray-600" />
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-800/50 border-b border-gray-800">
+                  <tr>
+                    {getTabColumns().map((col) => (
+                      <th key={col.key} onClick={() => handleSort(col.key)}
+                        className="px-4 py-3 text-left font-semibold text-gray-400 cursor-pointer hover:text-gray-200 transition">
+                        {col.label}
+                        {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredData.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No stocks in this category</td></tr>
+                  ) : (
+                    filteredData.map((stock) => (
+                      <React.Fragment key={stock.symbol}>
+                        <tr onClick={() => handleRowClick(stock.symbol)}
+                          className={`border-b border-gray-800 cursor-pointer transition ${expandedSymbol === stock.symbol ? "bg-gray-800/60" : "hover:bg-gray-800/30"}`}>
+                          {getTabColumns().map((col) => {
+                            const val = (stock as any)[col.key];
+                            let cls = "px-4 py-3 text-gray-200";
+                            if (col.key === "symbol") cls += " font-semibold text-white";
+                            if (col.key === "price") cls += " font-mono";
+                            if (col.key === "rs") cls += ` font-mono ${getRsColor(val)}`;
+                            if (col.key === "grade") cls += ` font-mono ${getGradeColor(val)}`;
+                            if (["ma50", "ma150", "ma200", "atr"].includes(col.key)) cls += " font-mono text-gray-300";
+                            if (["distance52wHigh", "distance52wLow"].includes(col.key)) cls += " font-mono text-gray-300";
+                            return (<td key={col.key} className={cls}>{formatValue(val, col.key)}</td>);
+                          })}
+                        </tr>
+                        {expandedSymbol === stock.symbol && (
+                          <tr className="bg-gray-900/80">
+                            <td colSpan={getTabColumns().length} className="border-b border-gray-800">
+                              <div className="grid grid-cols-[1fr_280px] gap-0">
+                                <div>
+                                  {chartLoading === stock.symbol && (
+                                    <div className="p-4 text-gray-500 text-sm animate-pulse">Loading chart...</div>
+                                  )}
+                                  {chartBars[stock.symbol] && <MiniChart bars={chartBars[stock.symbol]} />}
+                                  {!chartLoading && !chartBars[stock.symbol] && (
+                                    <div className="p-4 text-gray-600 text-sm">No chart data</div>
+                                  )}
+                                </div>
+                                <div className="border-l border-gray-800 p-4 text-sm space-y-2">
+                                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Key Metrics</div>
+                                  <div><span className="text-gray-500">Price:</span> <span className="text-white font-mono">${stock.price.toFixed(2)}</span></div>
+                                  <div><span className="text-gray-500">RS:</span> <span className={`font-mono ${getRsColor(stock.rs)}`}>{stock.rs}</span></div>
+                                  <div><span className="text-gray-500">Grade:</span> <span className={`font-mono ${getGradeColor(stock.grade)}`}>{stock.grade}</span></div>
+                                  <div><span className="text-gray-500">50 MA:</span> <span className="text-gray-300 font-mono">${stock.ma50.toFixed(2)}</span></div>
+                                  <div><span className="text-gray-500">150 MA:</span> <span className="text-gray-300 font-mono">${stock.ma150.toFixed(2)}</span></div>
+                                  <div><span className="text-gray-500">200 MA:</span> <span className="text-gray-300 font-mono">${stock.ma200.toFixed(2)}</span></div>
+                                  <div><span className="text-gray-500">ATR:</span> <span className="text-gray-300 font-mono">{stock.atr.toFixed(2)}</span></div>
+                                  <div><span className="text-gray-500">vs 52w High:</span> <span className="text-gray-300 font-mono">{(stock.distance52wHigh * 100).toFixed(0)}%</span></div>
+                                  <div><span className="text-gray-500">vs 52w Low:</span> <span className="text-gray-300 font-mono">{(stock.distance52wLow * 100).toFixed(0)}%</span></div>
+                                  <div className="pt-1 border-t border-gray-800 mt-2">
+                                    <span className="text-gray-500">Template:</span> <span className={stock.passesTemplate ? "text-emerald-400" : "text-gray-600"}>{stock.passesTemplate ? "✓ Pass" : "✗ Fail"}</span>
+                                  </div>
+                                  <div><span className="text-gray-500">VCP:</span> <span className={stock.passesVcp ? "text-emerald-400" : "text-gray-600"}>{stock.passesVcp ? "✓ Pass" : "✗ Fail"}</span></div>
+                                  <div><span className="text-gray-500">Breakout:</span> <span className={stock.passesBreakout ? "text-emerald-400" : "text-gray-600"}>{stock.passesBreakout ? "✓ Pass" : "✗ Fail"}</span></div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
