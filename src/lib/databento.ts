@@ -127,7 +127,12 @@ export async function fetchBenchmark(
   end: string
 ): Promise<Bar[]> {
   const result = await fetchBars(apiKey, ['QQQ'], start, end);
-  const bars = result['QQQ'] || [];
+  // Try exact match first, then fuzzy match (Databento may pad symbols)
+  let bars = result['QQQ'] || [];
+  if (bars.length === 0) {
+    const key = Object.keys(result).find(k => k.trim().startsWith('QQQ'));
+    if (key) bars = result[key];
+  }
   bars.sort((a, b) => a.date.localeCompare(b.date));
   return bars;
 }
