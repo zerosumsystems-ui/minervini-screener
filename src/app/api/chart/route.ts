@@ -113,7 +113,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      symbol: body.symbol,
+      symbol: body.symbol, _rawSample: lines[0],
       bars,
     });
   } catch (e) {
