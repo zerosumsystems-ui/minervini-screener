@@ -5,7 +5,7 @@
 
 // Constants
 export const MIN_PRICE = 10;
-export const MIN_ADV_SHARES = 500000;
+export const MIN_ADV_SHARES = 500000; 
 export const MA200_RISE_DAYS = 21;
 export const DIST_52W_LOW = 1.30;
 export const MAX_52W_HIGH = 0.75;
