@@ -127,7 +127,6 @@ export async function fetchBenchmark(
   end: string
 ): Promise<Bar[]> {
   const result = await fetchBars(apiKey, ['QQQ'], start, end);
-  // Try exact match first, then fuzzy match (Databento may pad symbols)
   let bars = result['QQQ'] || [];
   if (bars.length === 0) {
     const key = Object.keys(result).find(k => k.trim().startsWith('QQQ'));
@@ -142,7 +141,6 @@ export function getDateRange(tradingDaysBack: number = 252): {
   end: string;
 } {
   const end = new Date();
-  end.setDate(end.getDate() - 1);
   const start = new Date(end.getTime() - (tradingDaysBack / 252) * 365.25 * 24 * 60 * 60 * 1000);
   return {
     start: formatDate(start),
