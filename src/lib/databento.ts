@@ -93,7 +93,7 @@ async function fetchBarsBatch(
 
   // Build form data for multipart request
   const formData = new URLSearchParams();
-  formData.append('dataset', 'DBEQ.BASIC');
+  formData.append('dataset', 'EQUS.MINI');
   formData.append('symbols', symbolString);
   formData.append('schema', 'ohlcv-1d');
   formData.append('start', start);
