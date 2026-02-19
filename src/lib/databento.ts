@@ -6,16 +6,16 @@
 import { Bar } from './screener';
 
 export const CURATED_UNIVERSE = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B', 'JNJ', 'V',
-  'WMT', 'JPM', 'PG', 'MA', 'INTC', 'CSCO', 'CMCSA', 'NFLX', 'PYPL', 'ADBE',
-  'CRM', 'INTU', 'IBM', 'ACN', 'NOW', 'AMAT', 'LRCX', 'ASML', 'QCOM', 'AMD',
-  'AVGO', 'MU', 'SSNLF', 'SNPS', 'MCHP', 'CDNS', 'NXPI', 'MRVL', 'PSTG', 'CRWD',
-  'ZS', 'OKTA', 'DDOG', 'NET', 'FTNT', 'SPLK', 'ORCL', 'SAP', 'SALESFORCE', 'SQ',
-  'SHOP', 'UBER', 'DASH', 'RBLX', 'U', 'CHWY', 'EXPE', 'ABNB', 'LYFT', 'ROKU',
-  'COIN', 'MDB', 'SNOW', 'TWLO', 'ZM', 'ZOOM', 'WDAY', 'VEEV', 'DKNG', 'PENN',
-  'MSTR', 'RIOT', 'MARA', 'HOOD', 'FUTU', 'DLO', 'CLSK', 'MARA', 'CPRT', 'TREX',
-  'SQM', 'RIO', 'BYDDY', 'NIO', 'XPEV', 'LI', 'LCID', 'RIVN', 'BLDR', 'DHI',
-  'TPH', 'TJX', 'ULTA', 'EL', 'ESTC', 'DBX', 'UPST', 'COIN', 'BILL', 'SMCI',
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'INTC', 'CSCO', 'CMCSA',
+  'NFLX', 'PYPL', 'ADBE', 'INTU', 'NOW', 'AMAT', 'LRCX', 'ASML', 'QCOM', 'AMD',
+  'AVGO', 'MU', 'SNPS', 'MCHP', 'CDNS', 'NXPI', 'MRVL', 'PSTG', 'CRWD', 'ZS',
+  'OKTA', 'DDOG', 'NET', 'FTNT', 'ORCL', 'SHOP', 'UBER', 'DASH', 'RBLX', 'CHWY',
+  'ABNB', 'LYFT', 'ROKU', 'COIN', 'MDB', 'SNOW', 'TWLO', 'ZM', 'WDAY', 'VEEV',
+  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLSK', 'CPRT', 'UPST', 'BILL',
+  'SMCI', 'PANW', 'MNST', 'TEAM', 'TTD', 'TOST', 'DUOL', 'ARM', 'ON', 'MELI',
+  'LULU', 'COST', 'PDD', 'JD', 'BIDU', 'REGN', 'GILD', 'ILMN', 'ISRG', 'MRNA',
+  'BIIB', 'AMGN', 'ADP', 'SBUX', 'MDLZ', 'ADI', 'KLAC', 'KDP', 'CTAS', 'EXC',
+  'XEL', 'EA', 'VRSK', 'ANSS', 'IDXX', 'TTWO', 'FAST', 'FANG', 'ODFL', 'GEHC',
 ];
 
 interface DatabentoRecord {
@@ -155,15 +155,15 @@ async function fetchBarsBatch(
 }
 
 /**
- * Fetch SPY benchmark data
+ * Fetch QQQ benchmark data
  */
 export async function fetchBenchmark(
   apiKey: string,
   start: string,
   end: string
 ): Promise<Bar[]> {
-  const result = await fetchBars(apiKey, ['SPY'], start, end);
-  const bars = result['SPY'] || [];
+  const result = await fetchBars(apiKey, ['QQQ'], start, end);
+  const bars = result['QQQ'] || [];
   bars.sort((a, b) => a.date.localeCompare(b.date));
   return bars;
 }
