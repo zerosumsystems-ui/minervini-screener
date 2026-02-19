@@ -11,7 +11,7 @@ export const CURATED_UNIVERSE = [
   'AVGO', 'MU', 'SNPS', 'MCHP', 'CDNS', 'NXPI', 'MRVL', 'PSTG', 'CRWD', 'ZS',
   'OKTA', 'DDOG', 'NET', 'FTNT', 'ORCL', 'SHOP', 'UBER', 'DASH', 'RBLX', 'CHWY',
   'ABNB', 'LYFT', 'ROKU', 'COIN', 'MDB', 'SNOW', 'TWLO', 'ZM', 'WDAY', 'VEEV',
-  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLSK', 'CPRT', 'UPST', 'BILL',
+  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLS', 'CPRT', 'UPST', 'BILL',
   'SMCI', 'PANW', 'MNST', 'TEAM', 'TTD', 'TOST', 'DUOL', 'ARM', 'ON', 'MELI',
   'LULU', 'COST', 'PDD', 'JD', 'BIDU', 'REGN', 'GILD', 'ILMN', 'ISRG', 'MRNA',
   'BIIB', 'AMGN', 'ADP', 'SBUX', 'MDLZ', 'ADI', 'KLAC', 'KDP', 'CTAS', 'EXC',
@@ -93,7 +93,7 @@ async function fetchBarsBatch(
 
   // Build form data for multipart request
   const formData = new URLSearchParams();
-  formData.append('dataset', 'EQUS.MINI');
+  formData.append('dataset', 'EQUS.SUMMARY');
   formData.append('symbols', symbolString);
   formData.append('schema', 'ohlcv-1d');
   formData.append('start', start);
