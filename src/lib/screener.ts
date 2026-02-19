@@ -1,20 +1,19 @@
-/**  
+/**
  * Minervini SEPA Stock Screener Core Logic
- * Ported from Python implementation
+ * Implements Mark Minervini's Trend Template, VCP, and Breakout criteria
+ * from "Trade Like a Stock Market Wizard"
  */
 
-// Constants
+// Constants - Minervini's SEPA criteria thresholds
 export const MIN_PRICE = 10;
-export const MIN_ADV_SHARES = 500000; 
-export const MA200_RISE_DAYS = 21;
-export const DIST_52W_LOW = 1.30;
-export const MAX_52W_HIGH = 0.75;
-export const RS_MIN_PCT = 70;
-export const RS_IDEAL_PCT = 90;
-// TEST REPLACEMENTexport const VCP_ATR_RATIO = 0.70;
+export const MIN_ADV_DOLLARS = 20_000_000; // $20M minimum avg daily dollar volume
+export const MA200_RISE_DAYS = 22; // ~1 month of trading days
+export const DIST_52W_LOW = 1.25; // Price at least 25% above 52-week low
+export const MAX_DIST_52W_HIGH = 0.75; // Price within 25% of 52-week high
+export const VCP_ATR_RATIO = 0.75;
 export const VCP_VOL_RATIO = 0.80;
 export const VCP_RANGE_MAX = 0.08;
-export const VCP_NEAR_HIGH = 0.88;
+export const VCP_NEAR_HIGH = 0.85;
 export const BO_PIVOT_BARS = 10;
 export const BO_VOL_MULT = 1.40;
 
@@ -30,7 +29,8 @@ export interface Bar {
 export interface ScreenerResult {
   symbol: string;
   price: number;
-  rs: number;
+  rs: number;           // Will be set to percentile rank 1-99 after batch processing
+  rawRs: number;        // Raw relative strength value before ranking
   grade: string;
   passesTemplate: boolean;
   passesVcp: boolean;
@@ -42,6 +42,7 @@ export interface ScreenerResult {
   ma150: number;
   ma200: number;
   atr: number;
+  templateCriteria: number; // How many of 8 trend template criteria pass (0-8)
 }
 
 /**
@@ -57,7 +58,7 @@ export function sma(data: Bar[], period: number): number | null {
  * Calculate SMA at specific index
  */
 export function smaAt(data: Bar[], period: number, index: number): number | null {
-  if (index + 1 < period) return null;
+  if (index + 1 < period || index >= data.length) return null;
   const sum = data.slice(index - period + 1, index + 1).reduce((acc, bar) => acc + bar.close, 0);
   return sum / period;
 }
@@ -66,73 +67,112 @@ export function smaAt(data: Bar[], period: number, index: number): number | null
  * Calculate Average True Range
  */
 export function calcAtr(data: Bar[], period: number): number | null {
-  if (data.length < period) return null;
-
+  if (data.length < period + 1) return null;
   const tr: number[] = [];
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 1; i < data.length; i++) {
     const high = data[i].high;
     const low = data[i].low;
-    const prevClose = i > 0 ? data[i - 1].close : data[i].close;
-
+    const prevClose = data[i - 1].close;
     const trValue = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
     tr.push(trValue);
   }
-
   const atr = tr.slice(-period).reduce((acc, val) => acc + val, 0) / period;
   return atr;
 }
 
 /**
- * Calculate IBD RS Score
- * Weighted average of quarterly outperformance vs benchmark: 40/20/20/20
+ * Calculate average volume over N periods
  */
-export function ibdRs(stockData: Bar[], benchmarkData: Bar[]): number {
+function avgVolume(data: Bar[], period: number): number | null {
+  if (data.length < period) return null;
+  return data.slice(-period).reduce((acc, bar) => acc + bar.volume, 0) / period;
+}
+
+/**
+ * Calculate raw relative strength vs benchmark
+ * Returns a raw score (not percentile ranked) - higher is better
+ *
+ * Uses IBD-style weighted quarterly performance:
+ * Most recent quarter weighted 2x (40%), other 3 quarters 20% each
+ * Measures cumulative return vs benchmark for each quarter
+ */
+export function calculateRawRs(stockData: Bar[], benchmarkData: Bar[]): number {
   if (stockData.length < 60 || benchmarkData.length < 60) return 0;
 
-  const stockRets: number[] = [];
-  const benchRets: number[] = [];
-
-  // Calculate returns for both
-  for (let i = 1; i < Math.min(stockData.length, benchmarkData.length); i++) {
-    const stockRet = (stockData[i].close - stockData[i - 1].close) / stockData[i - 1].close;
-    const benchRet = (benchmarkData[i].close - benchmarkData[i - 1].close) / benchmarkData[i - 1].close;
-
-    stockRets.push(stockRet);
-    benchRets.push(benchRet);
+  // Align data by date
+  const benchMap = new Map<string, Bar>();
+  for (const bar of benchmarkData) {
+    benchMap.set(bar.date, bar);
   }
 
-  // Get last 252 trading days (1 year)
-  const recent = Math.min(252, stockRets.length);
+  // Get aligned pairs
+  const aligned: { stock: Bar; bench: Bar }[] = [];
+  for (const bar of stockData) {
+    const benchBar = benchMap.get(bar.date);
+    if (benchBar) {
+      aligned.push({ stock: bar, bench: benchBar });
+    }
+  }
 
-  // Q1 (most recent), Q2, Q3, Q4
-  const q1End = recent;
-  const q1Start = Math.max(0, recent - 63); // ~63 trading days per quarter
-  const q2Start = Math.max(0, q1Start - 63);
-  const q3Start = Math.max(0, q2Start - 63);
-  const q4Start = Math.max(0, q3Start - 63);
+  if (aligned.length < 60) return 0;
 
-  const calculateQuarterlyPerformance = (start: number, end: number): number => {
-    if (start >= end) return 0;
+  // Calculate cumulative returns for quarters
+  const len = aligned.length;
 
-    const stockQ = stockRets
-      .slice(stockRets.length - end, stockRets.length - start)
-      .reduce((a, b) => a + b, 0);
-    const benchQ = benchRets
-      .slice(benchRets.length - end, benchRets.length - start)
-      .reduce((a, b) => a + b, 0);
-
-    const outperformance = stockQ - benchQ;
-    return Math.max(0, Math.min(100, 50 + outperformance * 500)); // Scale to 0-100
+  const calcReturn = (data: { stock: Bar; bench: Bar }[], start: number, end: number) => {
+    if (start >= end || start < 0) return { stockRet: 0, benchRet: 0 };
+    const stockStart = data[start].stock.close;
+    const stockEnd = data[end - 1].stock.close;
+    const benchStart = data[start].bench.close;
+    const benchEnd = data[end - 1].bench.close;
+    return {
+      stockRet: (stockEnd - stockStart) / stockStart,
+      benchRet: (benchEnd - benchStart) / benchStart,
+    };
   };
 
-  const q1 = calculateQuarterlyPerformance(q1Start, q1End);
-  const q2 = calculateQuarterlyPerformance(q2Start, q2Start + 63);
-  const q3 = calculateQuarterlyPerformance(q3Start, q3Start + 63);
-  const q4 = calculateQuarterlyPerformance(q4Start, q4Start + 63);
+  // Define quarters (most recent first)
+  const q1End = len;
+  const q1Start = Math.max(0, len - 63);
+  const q2End = q1Start;
+  const q2Start = Math.max(0, q2End - 63);
+  const q3End = q2Start;
+  const q3Start = Math.max(0, q3End - 63);
+  const q4End = q3Start;
+  const q4Start = Math.max(0, q4End - 63);
 
-  // Weighted average: 40/20/20/20
-  const rs = (q1 * 0.4 + q2 * 0.2 + q3 * 0.2 + q4 * 0.2) / 100;
-  return Math.round(rs * 100) / 100;
+  const q1 = calcReturn(aligned, q1Start, q1End);
+  const q2 = calcReturn(aligned, q2Start, q2End);
+  const q3 = calcReturn(aligned, q3Start, q3End);
+  const q4 = calcReturn(aligned, q4Start, q4End);
+
+  // Calculate outperformance for each quarter
+  const q1Out = q1.stockRet - q1.benchRet;
+  const q2Out = q2.stockRet - q2.benchRet;
+  const q3Out = q3.stockRet - q3.benchRet;
+  const q4Out = q4.stockRet - q4.benchRet;
+
+  // Weighted score: 40% most recent quarter, 20% each for the rest
+  const rawScore = q1Out * 0.4 + q2Out * 0.2 + q3Out * 0.2 + q4Out * 0.2;
+
+  return rawScore;
+}
+
+/**
+ * Convert raw RS scores to percentile ranks (1-99)
+ * This mimics IBD's RS Rating which is a percentile rank
+ */
+export function assignPercentileRanks(results: ScreenerResult[]): void {
+  if (results.length === 0) return;
+
+  // Sort by rawRs ascending
+  const sorted = [...results].sort((a, b) => a.rawRs - b.rawRs);
+
+  // Assign percentile ranks
+  for (let i = 0; i < sorted.length; i++) {
+    const percentile = Math.round(((i + 1) / sorted.length) * 99);
+    sorted[i].rs = Math.max(1, Math.min(99, percentile));
+  }
 }
 
 /**
@@ -141,144 +181,166 @@ export function ibdRs(stockData: Bar[], benchmarkData: Bar[]): number {
 export function passesLiquidity(
   data: Bar[],
   price: number,
-  avgVolume50: number
+  avgVol50: number
 ): boolean {
   if (price < MIN_PRICE) return false;
-
-  const adv = price * avgVolume50;
-  return adv >= MIN_ADV_SHARES;
+  const adv = price * avgVol50;
+  return adv >= MIN_ADV_DOLLARS;
 }
 
 /**
- * Check Minervini Trend Template (9 criteria)
+ * Check Minervini Trend Template (8 criteria from "Trade Like a Stock Market Wizard")
+ * Returns number of criteria passed and whether all pass
  */
-export function checkTrendTemplate(data: Bar[]): boolean {
-  if (data.length < 200) return false;
+export function checkTrendTemplate(data: Bar[]): { passes: boolean; criteriaCount: number } {
+  const result = { passes: false, criteriaCount: 0 };
+
+  if (data.length < 200) return result;
 
   const price = data[data.length - 1].close;
   const ma50 = sma(data, 50);
   const ma150 = sma(data, 150);
   const ma200 = sma(data, 200);
 
-  if (!ma50 || !ma150 || !ma200) return false;
+  if (!ma50 || !ma150 || !ma200) return result;
 
-  // 1. Price > MA50
-  if (price <= ma50) return false;
+  // 1. Current price above both the 150-day and 200-day MA
+  if (price > ma150 && price > ma200) result.criteriaCount++;
 
-  // 2. Price > MA150
-  if (price <= ma150) return false;
+  // 2. The 150-day MA is above the 200-day MA
+  if (ma150 > ma200) result.criteriaCount++;
 
-  // 3. Price > MA200
-  if (price <= ma200) return false;
+  // 3. The 200-day MA is trending up for at least 1 month (22 trading days)
+  const ma200_ago = smaAt(data, 200, data.length - 1 - MA200_RISE_DAYS);
+  if (ma200_ago && ma200 > ma200_ago) result.criteriaCount++;
 
-  // 4. MA150 > MA200
-  if (ma150 <= ma200) return false;
+  // 4. The 50-day MA is above both the 150-day and 200-day MA
+  if (ma50 > ma150 && ma50 > ma200) result.criteriaCount++;
 
-  // 5. MA50 > MA150
-  if (ma50 <= ma150) return false;
+  // 5. The current price is above the 50-day MA
+  if (price > ma50) result.criteriaCount++;
 
-  // 6. MA50 > MA200
-  if (ma50 <= ma200) return false;
+  // 6. The current price is at least 25% above the 52-week low
+  const oneYearData = data.slice(Math.max(0, data.length - 252));
+  const low52w = Math.min(...oneYearData.map((bar) => bar.low));
+  if (price >= low52w * DIST_52W_LOW) result.criteriaCount++;
 
-  // 7. MA200 rising over 21 days
-  const ma200_21days_ago = smaAt(data, 200, data.length - 1 - MA200_RISE_DAYS);
-  if (!ma200_21days_ago || ma200 <= ma200_21days_ago) return false;
+  // 7. The current price is within 25% of the 52-week high
+  const high52w = Math.max(...oneYearData.map((bar) => bar.high));
+  const pctOf52wHigh = price / high52w;
+  if (pctOf52wHigh >= MAX_DIST_52W_HIGH) result.criteriaCount++;
 
-  // 8. Find 52-week high/low
-  const oneYearAgo = data.length - 252;
-  const high52w = Math.max(
-    ...data.slice(Math.max(0, oneYearAgo)).map((bar) => bar.high)
-  );
-  const low52w = Math.min(
-    ...data.slice(Math.max(0, oneYearAgo)).map((bar) => bar.low)
-  );
+  // 8. The RS rating is no less than 70 (this will be checked after percentile ranking)
+  // We skip this here since RS requires batch processing
+  // Instead count it as criteria 8 in the route after ranking
 
-  // 8. Price >= 30% above 52-week low
-  if (price < low52w * DIST_52W_LOW) return false;
+  // Minervini requires all 7 structural criteria to pass (RS checked separately)
+  result.passes = result.criteriaCount >= 7;
 
-  // 9. Price within 25% of 52-week high (0.75 to 1.0)
-  if (price / high52w < MAX_52W_HIGH || price / high52w > 1.0) return false;
-
-  return true;
+  return result;
 }
 
 /**
  * Check if stock passes VCP (Volatility Contraction Pattern)
+ * Looks for tightening price action with volume dry-up
  */
 export function checkVcp(data: Bar[]): boolean {
   if (data.length < 65) return false;
 
   const price = data[data.length - 1].close;
-  const atr = calcAtr(data, 20);
-  const avgVol50 = sma(data.map((d) => ({ ...d, close: d.volume })), 50);
+  const atr14 = calcAtr(data, 14);
+  const avgVol50 = avgVolume(data, 50);
 
-  if (!atr || !avgVol50) return false;
+  if (!atr14 || !avgVol50) return false;
 
-  // 1. ATR contracting: recent ATR < historical ATR * ratio
-  const historicalAtr = calcAtr(data, 20);
-  if (!historicalAtr) return false;
-
+  // 1. ATR contracting: compare recent vs longer-term ATR
+  const longerData = data.slice(-60);
+  const longerAtr = calcAtr(longerData, 14);
   const recentData = data.slice(-20);
-  const recentAtr = calcAtr(recentData, 20);
-  if (!recentAtr || recentAtr >= historicalAtr * VCP_ATR_RATIO) return false;
+  const recentAtr = calcAtr(recentData, 14);
 
-  // 2. Volume dry-up: recent volume < 50-day avg * ratio
-  const currentVol = data[data.length - 1].volume;
-  if (currentVol >= avgVol50 * VCP_VOL_RATIO) return false;
+  if (!longerAtr || !recentAtr) return false;
+  if (recentAtr >= longerAtr * VCP_ATR_RATIO) return false;
 
-  // 3. Tight 10-day range
+  // 2. Volume dry-up: recent 5-day avg volume < 50-day avg * ratio
+  const recentAvgVol = avgVolume(data, 5);
+  if (!recentAvgVol || recentAvgVol >= avgVol50 * VCP_VOL_RATIO) return false;
+
+  // 3. Tight recent range: 10-day range < 8% of price
   const last10 = data.slice(-10);
-  const range10d = (Math.max(...last10.map((b) => b.high)) -
-                    Math.min(...last10.map((b) => b.low))) / price;
+  const range10d = (Math.max(...last10.map((b) => b.high)) - Math.min(...last10.map((b) => b.low))) / price;
   if (range10d > VCP_RANGE_MAX) return false;
 
-  // 4. Near 60-day high
+  // 4. Price near 60-day high (within 15%)
   const high60d = Math.max(...data.slice(-60).map((b) => b.high));
   if (price < high60d * VCP_NEAR_HIGH) return false;
 
-  // 5. No new 52-week low recently (last 10 days)
+  // 5. Not making new 52-week lows
   const low52w = Math.min(...data.slice(-252).map((b) => b.low));
   const recentLow = Math.min(...data.slice(-10).map((b) => b.low));
-  if (recentLow <= low52w * 1.01) return false;
-
-  // 6. Bonus: Bollinger Band squeeze (optional, simplified)
-  // This is a bonus criterion, so not required
+  if (recentLow <= low52w * 1.02) return false;
 
   return true;
 }
 
 /**
- * Check if stock is breaking out
+ * Check if stock is breaking out of a consolidation
  * Returns breakout grade: 'A', 'B', 'C', or null
  */
 export function checkBreakout(data: Bar[]): string | null {
-  if (data.length < BO_PIVOT_BARS + 1) return null;
+  if (data.length < BO_PIVOT_BARS + 5) return null;
 
-  const currentPrice = data[data.length - 1].close;
-  const currentVolume = data[data.length - 1].volume;
+  const today = data[data.length - 1];
+  const currentPrice = today.close;
+  const currentVolume = today.volume;
 
-  // Find pivot high (highest high of prior BO_PIVOT_BARS bars)
+  // Find pivot high (highest high of prior BO_PIVOT_BARS bars, excluding today)
   const priorBars = data.slice(-BO_PIVOT_BARS - 1, -1);
   const pivotHigh = Math.max(...priorBars.map((b) => b.high));
 
   // Calculate 50-day average volume
-  const avgVol50 = sma(data.map((d) => ({ ...d, close: d.volume })), 50);
+  const avgVol50 = avgVolume(data, 50);
   if (!avgVol50) return null;
 
-  // Check if above pivot high with volume
+  // Price must close above the pivot high
   if (currentPrice <= pivotHigh) return null;
+
+  // Volume must be above average * multiplier
   if (currentVolume < avgVol50 * BO_VOL_MULT) return null;
 
-  // Grade based on how far above pivot
-  const percentAbove = (currentPrice - pivotHigh) / pivotHigh;
+  // Verify it's actually coming out of a base (not already extended)
+  // Check that the stock was consolidating in the prior 20 bars
+  const last20 = data.slice(-21, -1);
+  const range20 = (Math.max(...last20.map(b => b.high)) - Math.min(...last20.map(b => b.low))) / currentPrice;
+  if (range20 > 0.25) return null; // Too wide a range = not a proper base
 
-  if (percentAbove >= 0.04) return 'A'; // 4%+ above pivot
-  if (percentAbove >= 0.02) return 'B'; // 2-4% above pivot
-  return 'C'; // Less than 2% above pivot
+  // Grade based on how far above pivot and volume surge
+  const percentAbove = (currentPrice - pivotHigh) / pivotHigh;
+  const volumeRatio = currentVolume / avgVol50;
+
+  if (percentAbove >= 0.03 && volumeRatio >= 2.0) return 'A'; // Strong breakout
+  if (percentAbove >= 0.02 && volumeRatio >= 1.5) return 'B'; // Good breakout
+  return 'C'; // Marginal breakout
+}
+
+/**
+ * Assign letter grades based on overall quality
+ * A = Breakout + Template + High RS
+ * B = Template + VCP + Good RS
+ * C = Template only or partial
+ */
+function assignGrade(result: ScreenerResult): string {
+  if (result.passesBreakout && result.passesTemplate && result.rs >= 80) return 'A';
+  if (result.passesBreakout && result.passesTemplate) return 'B';
+  if (result.passesTemplate && result.passesVcp && result.rs >= 70) return 'B';
+  if (result.passesTemplate && result.rs >= 70) return 'C';
+  if (result.passesTemplate) return 'D';
+  return 'N/A';
 }
 
 /**
  * Run the full screener pipeline for a single stock
+ * Note: RS will be raw score - must call assignPercentileRanks() after batch processing
  */
 export function runPipeline(
   symbol: string,
@@ -290,7 +352,7 @@ export function runPipeline(
   const price = data[data.length - 1].close;
 
   // Check liquidity
-  const avgVol50 = sma(data.map((d) => ({ ...d, close: d.volume })), 50);
+  const avgVol50 = avgVolume(data, 50);
   if (!avgVol50 || !passesLiquidity(data, price, avgVol50)) return null;
 
   // Calculate metrics
@@ -302,32 +364,29 @@ export function runPipeline(
   if (!ma50 || !ma150 || !ma200 || !atr) return null;
 
   // Find 52-week high/low
-  const oneYearAgo = data.length - 252;
-  const high52w = Math.max(
-    ...data.slice(Math.max(0, oneYearAgo)).map((bar) => bar.high)
-  );
-  const low52w = Math.min(
-    ...data.slice(Math.max(0, oneYearAgo)).map((bar) => bar.low)
-  );
+  const oneYearData = data.slice(Math.max(0, data.length - 252));
+  const high52w = Math.max(...oneYearData.map((bar) => bar.high));
+  const low52w = Math.min(...oneYearData.map((bar) => bar.low));
 
   const distance52wLow = price / low52w;
   const distance52wHigh = price / high52w;
 
-  // Calculate RS
-  const rs = ibdRs(data, benchmarkData);
+  // Calculate raw RS (will be converted to percentile later)
+  const rawRs = calculateRawRs(data, benchmarkData);
 
   // Check pattern criteria
-  const passesTemplate = checkTrendTemplate(data);
-  const passesVcp = checkVcp(data);
+  const templateResult = checkTrendTemplate(data);
+  const passesVcp = templateResult.passes && checkVcp(data);
   const breakoutGrade = checkBreakout(data);
   const passesBreakout = breakoutGrade !== null;
 
   return {
     symbol,
     price: Math.round(price * 100) / 100,
-    rs: Math.round(rs),
-    grade: breakoutGrade || 'N/A',
-    passesTemplate,
+    rs: 0, // Will be set by assignPercentileRanks()
+    rawRs,
+    grade: 'N/A', // Will be set by assignGrade() after RS ranking
+    passesTemplate: templateResult.passes,
     passesVcp,
     passesBreakout,
     passesLiquidity: true,
@@ -337,5 +396,34 @@ export function runPipeline(
     ma150: Math.round(ma150 * 100) / 100,
     ma200: Math.round(ma200 * 100) / 100,
     atr: Math.round(atr * 100) / 100,
+    templateCriteria: templateResult.criteriaCount,
   };
+}
+
+/**
+ * Post-process results after all stocks have been screened
+ * - Assigns percentile RS ranks
+ * - Re-evaluates trend template with RS criterion
+ * - Assigns final grades
+ */
+export function postProcessResults(results: ScreenerResult[]): void {
+  // Step 1: Assign percentile RS ranks
+  assignPercentileRanks(results);
+
+  // Step 2: Update template pass with RS criterion (Minervini requires RS >= 70)
+  for (const result of results) {
+    // If structural template passes but RS < 70, downgrade
+    if (result.passesTemplate && result.rs < 70) {
+      result.passesTemplate = false;
+    }
+    // Also re-check VCP (requires template to pass)
+    if (result.passesVcp && !result.passesTemplate) {
+      result.passesVcp = false;
+    }
+  }
+
+  // Step 3: Assign grades
+  for (const result of results) {
+    result.grade = assignGrade(result);
+  }
 }
