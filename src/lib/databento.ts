@@ -28,6 +28,9 @@ interface DatabentoRecord {
   symbol?: string;
 }
 
+/**
+ * Format date as YYYYMMDD string
+ */
 function formatDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -35,19 +38,29 @@ function formatDate(date: Date): string {
   return `${year}${month}${day}`;
 }
 
+/**
+ * Convert timestamp to date string (YYYY-MM-DD)
+ */
 function tsToDateString(ts: number): string {
-  const date = new Date(Math.floor(ts / 1_000_000));
+  const date = new Date(Math.floor(ts / 1_000_000)); // Convert nanoseconds to ms
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Create Basic auth header for Databento
+ */
 function createAuthHeader(apiKey: string): string {
   const credentials = Buffer.from(`${apiKey}:`).toString('base64');
   return `Basic ${credentials}`;
 }
 
+/**
+ * Fetch OHLCV bars from Databento
+ * Batches requests to max 500 symbols per request
+ */
 export async function fetchBars(
   apiKey: string,
   symbols: string[],
@@ -55,15 +68,21 @@ export async function fetchBars(
   end: string
 ): Promise<Record<string, Bar[]>> {
   const result: Record<string, Bar[]> = {};
+
+  // Batch symbols into groups of 500
   const batchSize = 500;
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, Math.min(i + batchSize, symbols.length));
     const batchResult = await fetchBarsBatch(apiKey, batch, start, end);
     Object.assign(result, batchResult);
   }
+
   return result;
 }
 
+/**
+ * Fetch OHLCV bars for a batch of symbols
+ */
 async function fetchBarsBatch(
   apiKey: string,
   symbols: string[],
@@ -71,8 +90,10 @@ async function fetchBarsBatch(
   end: string
 ): Promise<Record<string, Bar[]>> {
   const symbolString = symbols.join(',');
+
+  // Build form data for multipart request
   const formData = new URLSearchParams();
-  formData.append('dataset', 'XNAS.ITCH');
+  formData.append('dataset', 'DBEQ.BASIC');
   formData.append('symbols', symbolString);
   formData.append('schema', 'ohlcv-1d');
   formData.append('start', start);
@@ -90,18 +111,27 @@ async function fetchBarsBatch(
   });
 
   if (!response.ok) {
-    throw new Error(`Databento API error: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Databento API error: ${response.status} ${response.statusText}`
+    );
   }
 
   const text = await response.text();
-  const lines = text.split('\n').filter((line) => line.trim().length > 0);
+  const lines = text
+    .split('\n')
+    .filter((line) => line.trim().length > 0);
+
   const result: Record<string, Bar[]> = {};
 
   for (const line of lines) {
     try {
       const record: DatabentoRecord = JSON.parse(line);
       const symbol = (record.symbol || 'UNKNOWN').trim();
-      if (!result[symbol]) result[symbol] = [];
+
+      if (!result[symbol]) {
+        result[symbol] = [];
+      }
+
       result[symbol].push({
         date: tsToDateString(record.ts_event),
         open: record.open / 1e9,
@@ -111,22 +141,29 @@ async function fetchBarsBatch(
         volume: record.volume,
       });
     } catch (e) {
+      // Skip malformed lines
       console.warn('Failed to parse Databento record:', line);
     }
   }
 
+  // Sort bars by date for each symbol
   for (const symbol in result) {
     result[symbol].sort((a, b) => a.date.localeCompare(b.date));
   }
+
   return result;
 }
 
+/**
+ * Fetch SPY benchmark data
+ */
 export async function fetchBenchmark(
   apiKey: string,
   start: string,
   end: string
 ): Promise<Bar[]> {
   const result = await fetchBars(apiKey, ['QQQ'], start, end);
+  // Try exact match first, then fuzzy match (Databento may pad symbols)
   let bars = result['QQQ'] || [];
   if (bars.length === 0) {
     const key = Object.keys(result).find(k => k.trim().startsWith('QQQ'));
@@ -136,12 +173,18 @@ export async function fetchBenchmark(
   return bars;
 }
 
+/**
+ * Get date range for last N days of trading
+ * Defaults to 1 year of data
+ */
 export function getDateRange(tradingDaysBack: number = 252): {
   start: string;
   end: string;
 } {
   const end = new Date();
+  // Approximate: each year has ~252 trading days
   const start = new Date(end.getTime() - (tradingDaysBack / 252) * 365.25 * 24 * 60 * 60 * 1000);
+
   return {
     start: formatDate(start),
     end: formatDate(end),
