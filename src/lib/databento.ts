@@ -11,22 +11,12 @@ export const CURATED_UNIVERSE = [
   'AVGO', 'MU', 'SNPS', 'MCHP', 'CDNS', 'NXPI', 'MRVL', 'PSTG', 'CRWD', 'ZS',
   'OKTA', 'DDOG', 'NET', 'FTNT', 'ORCL', 'SHOP', 'UBER', 'DASH', 'RBLX', 'CHWY',
   'ABNB', 'LYFT', 'ROKU', 'COIN', 'MDB', 'SNOW', 'TWLO', 'ZM', 'WDAY', 'VEEV',
-  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLS', 'CPRT', 'UPST', 'BILL',
+  'DKNG', 'PENN', 'MSTR', 'RIOT', 'MARA', 'HOOD', 'CLSK', 'CPRT', 'UPST', 'BILL',
   'SMCI', 'PANW', 'MNST', 'TEAM', 'TTD', 'TOST', 'DUOL', 'ARM', 'ON', 'MELI',
   'LULU', 'COST', 'PDD', 'JD', 'BIDU', 'REGN', 'GILD', 'ILMN', 'ISRG', 'MRNA',
   'BIIB', 'AMGN', 'ADP', 'SBUX', 'MDLZ', 'ADI', 'KLAC', 'KDP', 'CTAS', 'EXC',
   'XEL', 'EA', 'VRSK', 'ANSS', 'IDXX', 'TTWO', 'FAST', 'FANG', 'ODFL', 'GEHC',
 ];
-
-interface DatabentoRecord {
-  ts_event: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  symbol?: string;
-}
 
 /**
  * Format date as YYYYMMDD string
@@ -39,10 +29,11 @@ function formatDate(date: Date): string {
 }
 
 /**
- * Convert timestamp to date string (YYYY-MM-DD)
+ * Convert nanosecond timestamp (string or number) to date string (YYYY-MM-DD)
  */
-function tsToDateString(ts: number): string {
-  const date = new Date(Math.floor(ts / 1_000_000)); // Convert nanoseconds to ms
+function tsToDateString(ts: string | number): string {
+  const tsNum = Number(ts);
+  const date = new Date(Math.floor(tsNum / 1_000_000)); // Convert nanoseconds to ms
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -58,43 +49,41 @@ function createAuthHeader(apiKey: string): string {
 }
 
 /**
- * Fetch OHLCV bars from Databento
- * Batches requests to max 500 symbols per request
+ * Parse a single NDJSON record from Databento EQUS.SUMMARY response
+ * Records have nested hd (header) and string values for prices
  */
-export async function fetchBars(
-  apiKey: string,
-  symbols: string[],
-  start: string,
-  end: string
-): Promise<Record<string, Bar[]>> {
-  const result: Record<string, Bar[]> = {};
+function parseRecord(line: string): Bar | null {
+  try {
+    const record = JSON.parse(line);
+    // EQUS.SUMMARY format: ts_event is in hd (header) object, values are strings
+    const ts = record.hd?.ts_event || record.ts_event;
+    if (!ts) return null;
 
-  // Batch symbols into groups of 500
-  const batchSize = 500;
-  for (let i = 0; i < symbols.length; i += batchSize) {
-    const batch = symbols.slice(i, Math.min(i + batchSize, symbols.length));
-    const batchResult = await fetchBarsBatch(apiKey, batch, start, end);
-    Object.assign(result, batchResult);
+    return {
+      date: tsToDateString(ts),
+      open: Number(record.open) / 1e9,
+      high: Number(record.high) / 1e9,
+      low: Number(record.low) / 1e9,
+      close: Number(record.close) / 1e9,
+      volume: Number(record.volume),
+    };
+  } catch {
+    return null;
   }
-
-  return result;
 }
 
 /**
- * Fetch OHLCV bars for a batch of symbols
+ * Fetch OHLCV bars for a single symbol from Databento
  */
-async function fetchBarsBatch(
+async function fetchSingleSymbol(
   apiKey: string,
-  symbols: string[],
+  symbol: string,
   start: string,
   end: string
-): Promise<Record<string, Bar[]>> {
-  const symbolString = symbols.join(',');
-
-  // Build form data for multipart request
+): Promise<Bar[]> {
   const formData = new URLSearchParams();
   formData.append('dataset', 'EQUS.SUMMARY');
-  formData.append('symbols', symbolString);
+  formData.append('symbols', symbol);
   formData.append('schema', 'ohlcv-1d');
   formData.append('start', start);
   formData.append('end', end);
@@ -111,65 +100,61 @@ async function fetchBarsBatch(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Databento API error: ${response.status} ${response.statusText}`
-    );
+    console.warn(`Databento error for ${symbol}: ${response.status}`);
+    return [];
   }
 
   const text = await response.text();
-  const lines = text
-    .split('\n')
-    .filter((line) => line.trim().length > 0);
-
-  const result: Record<string, Bar[]> = {};
+  const lines = text.split('\n').filter((line) => line.trim().length > 0);
+  const bars: Bar[] = [];
 
   for (const line of lines) {
-    try {
-      const record: DatabentoRecord = JSON.parse(line);
-      const symbol = (record.symbol || 'UNKNOWN').trim();
-
-      if (!result[symbol]) {
-        result[symbol] = [];
-      }
-
-      result[symbol].push({
-        date: tsToDateString(record.ts_event),
-        open: record.open / 1e9,
-        high: record.high / 1e9,
-        low: record.low / 1e9,
-        close: record.close / 1e9,
-        volume: record.volume,
-      });
-    } catch (e) {
-      // Skip malformed lines
-      console.warn('Failed to parse Databento record:', line);
-    }
+    const bar = parseRecord(line);
+    if (bar) bars.push(bar);
   }
 
-  // Sort bars by date for each symbol
-  for (const symbol in result) {
-    result[symbol].sort((a, b) => a.date.localeCompare(b.date));
+  bars.sort((a, b) => a.date.localeCompare(b.date));
+  return bars;
+}
+
+/**
+ * Fetch OHLCV bars from Databento
+ * Fetches each symbol individually (EQUS.SUMMARY doesn't include symbol in records)
+ * Uses parallel requests with concurrency limit
+ */
+export async function fetchBars(
+  apiKey: string,
+  symbols: string[],
+  start: string,
+  end: string
+): Promise<Record<string, Bar[]>> {
+  const result: Record<string, Bar[]> = {};
+  const concurrency = 10;
+
+  for (let i = 0; i < symbols.length; i += concurrency) {
+    const batch = symbols.slice(i, Math.min(i + concurrency, symbols.length));
+    const promises = batch.map(symbol => fetchSingleSymbol(apiKey, symbol, start, end));
+    const results = await Promise.allSettled(promises);
+
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled' && r.value.length > 0) {
+        result[batch[idx]] = r.value;
+      }
+    });
   }
 
   return result;
 }
 
 /**
- * Fetch SPY benchmark data
+ * Fetch QQQ benchmark data
  */
 export async function fetchBenchmark(
   apiKey: string,
   start: string,
   end: string
 ): Promise<Bar[]> {
-  const result = await fetchBars(apiKey, ['QQQ'], start, end);
-  // Try exact match first, then fuzzy match (Databento may pad symbols)
-  let bars = result['QQQ'] || [];
-  if (bars.length === 0) {
-    const key = Object.keys(result).find(k => k.trim().startsWith('QQQ'));
-    if (key) bars = result[key];
-  }
-  bars.sort((a, b) => a.date.localeCompare(b.date));
+  const bars = await fetchSingleSymbol(apiKey, 'QQQ', start, end);
   return bars;
 }
 
