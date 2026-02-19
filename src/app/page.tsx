@@ -3,22 +3,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 
-interface ScreenerResult {
-  symbol: string;
-  price: number;
-  rs: number;
-  grade: string;
-  passesTemplate: boolean;
-  passesVcp: boolean;
-  passesBreakout: boolean;
-  passesLiquidity: boolean;
-  distance52wLow: number;
-  distance52wHigh: number;
-  ma50: number;
-  ma150: number;
-  ma200: number;
-  atr: number;
-}
+interface ScreenerResult { symbol: string; price: number; rs: number; rawRs: number; grade: string; passesTemplate: boolean; passesVcp: boolean; passesBreakout: boolean; passesLiquidity: boolean; distance52wLow: number; distance52wHigh: number; ma50: number; ma150: number; ma200: number; atr: number; templateCriteria: number; }
 
 interface BarData {
   date: string;
@@ -31,47 +16,44 @@ interface BarData {
 
 function MiniChart({ bars }: { bars: BarData[] }) {
   if (bars.length < 2) return <div className="text-gray-500 text-sm p-4">Not enough data</div>;
-  const W = 700;
-  const H = 200;
-  const PAD = 30;
-  const closes = bars.map((b) => b.close);
-  const volumes = bars.map((b) => b.volume);
-  const minP = Math.min(...closes) * 0.995;
-  const maxP = Math.max(...closes) * 1.005;
+  const W = 700; const H = 220; const PAD = 35;
+  const allHighs = bars.map(b => b.high);
+  const allLows = bars.map(b => b.low);
+  const volumes = bars.map(b => b.volume);
+  const minP = Math.min(...allLows) * 0.998;
+  const maxP = Math.max(...allHighs) * 1.002;
   const maxV = Math.max(...volumes);
-  const xStep = (W - PAD * 2) / (bars.length - 1);
+  const barW = Math.max((W - PAD * 2) / bars.length, 1);
+  const candleW = Math.max(barW * 0.6, 1);
   const yScale = (v: number) => PAD + ((maxP - v) / (maxP - minP)) * (H - PAD * 2);
-  const pricePath = closes.map((c, i) => `${i === 0 ? "M" : "L"}${PAD + i * xStep},${yScale(c)}`).join(" ");
-  const areaPath = pricePath + ` L${PAD + (closes.length - 1) * xStep},${H - PAD} L${PAD},${H - PAD} Z`;
+  const last = bars[bars.length - 1];
+  const first = bars[0];
+  const change = ((last.close - first.close) / first.close * 100).toFixed(1);
+  const isUp = last.close >= first.close;
+  const closes = bars.map(b => b.close);
   const ma20: (number | null)[] = closes.map((_, i) => {
     if (i < 19) return null;
-    const slice = closes.slice(i - 19, i + 1);
-    return slice.reduce((a, b) => a + b, 0) / 20;
+    const sl = closes.slice(i - 19, i + 1);
+    return sl.reduce((a, b) => a + b, 0) / 20;
   });
-  const ma20Path = ma20
-    .map((v, i) => (v !== null ? `${ma20.slice(0, i).some((x) => x !== null) ? "L" : "M"}${PAD + i * xStep},${yScale(v)}` : ""))
-    .filter(Boolean)
-    .join(" ");
-  const last = closes[closes.length - 1];
-  const first = closes[0];
-  const change = ((last - first) / first * 100).toFixed(1);
-  const isUp = last >= first;
+  const ma50: (number | null)[] = closes.map((_, i) => {
+    if (i < 49) return null;
+    const sl = closes.slice(i - 49, i + 1);
+    return sl.reduce((a, b) => a + b, 0) / 50;
+  });
+  const makePath = (data: (number | null)[]) => data.map((v, i) => v !== null ? `${data.slice(0, i).some(x => x !== null) ? "L" : "M"}${PAD + i * barW + barW / 2},${yScale(v)}` : "").filter(Boolean).join(" ");
+  const ma20Path = makePath(ma20);
+  const ma50Path = makePath(ma50);
   return (
     <div className="p-4">
       <div className="flex items-center gap-4 mb-2 text-xs text-gray-400">
-        <span>Close: <span className="text-gray-100 font-mono">${last.toFixed(2)}</span></span>
+        <span>Close: <span className="text-gray-100 font-mono">${last.close.toFixed(2)}</span></span>
         <span className={isUp ? "text-emerald-400" : "text-red-400"}>{isUp ? "+" : ""}{change}%</span>
-        <span>High: <span className="font-mono">${Math.max(...closes).toFixed(2)}</span></span>
-        <span>Low: <span className="font-mono">${Math.min(...closes).toFixed(2)}</span></span>
+        <span>High: <span className="font-mono">${Math.max(...allHighs).toFixed(2)}</span></span>
+        <span>Low: <span className="font-mono">${Math.min(...allLows).toFixed(2)}</span></span>
         <span className="text-gray-600">120 days</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 200 }}>
-        <defs>
-          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={isUp ? "#10b981" : "#ef4444"} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={isUp ? "#10b981" : "#ef4444"} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 220 }}>
         {[0, 0.25, 0.5, 0.75, 1].map((f) => {
           const y = PAD + f * (H - PAD * 2);
           const price = maxP - f * (maxP - minP);
@@ -83,24 +65,37 @@ function MiniChart({ bars }: { bars: BarData[] }) {
           );
         })}
         {bars.map((b, i) => {
-          const bH = (b.volume / maxV) * 30;
+          const x = PAD + i * barW + barW / 2;
+          const bH = (b.volume / maxV) * 25;
+          return <rect key={`v${i}`} x={x - candleW / 2} y={H - PAD - bH} width={candleW} height={bH} fill="#374151" opacity="0.4" />;
+        })}
+        {bars.map((b, i) => {
+          const x = PAD + i * barW + barW / 2;
+          const isGreen = b.close >= b.open;
+          const color = isGreen ? "#10b981" : "#ef4444";
+          const bodyTop = yScale(Math.max(b.open, b.close));
+          const bodyBot = yScale(Math.min(b.open, b.close));
+          const bodyH = Math.max(bodyBot - bodyTop, 0.5);
           return (
-            <rect key={i} x={PAD + i * xStep - xStep * 0.3} y={H - PAD - bH} width={Math.max(xStep * 0.6, 1)} height={bH} fill="#374151" opacity="0.5" />
+            <g key={i}>
+              <line x1={x} y1={yScale(b.high)} x2={x} y2={yScale(b.low)} stroke={color} strokeWidth="0.8" />
+              <rect x={x - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={isGreen ? color : color} stroke={color} strokeWidth="0.5" />
+            </g>
           );
         })}
-        <path d={areaPath} fill="url(#areaGrad)" />
-        <path d={pricePath} fill="none" stroke={isUp ? "#10b981" : "#ef4444"} strokeWidth="1.5" />
-        {ma20Path && <path d={ma20Path} fill="none" stroke="#facc15" strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />}
+        {ma20Path && <path d={ma20Path} fill="none" stroke="#facc15" strokeWidth="1" strokeDasharray="3,2" opacity="0.7" />}
+        {ma50Path && <path d={ma50Path} fill="none" stroke="#60a5fa" strokeWidth="1" opacity="0.6" />}
       </svg>
       <div className="flex gap-4 mt-1 text-[10px] text-gray-500">
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: isUp ? "#10b981" : "#ef4444" }} /> Price</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-3 bg-emerald-500 rounded-sm" /> Up</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-3 bg-red-500 rounded-sm" /> Down</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 border-t border-dashed border-yellow-500" /> 20MA</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-blue-400" /> 50MA</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 bg-gray-700 opacity-50" /> Volume</span>
       </div>
     </div>
   );
 }
-
 function MinerviniScreener() {
   const [data, setData] = useState<ScreenerResult[]>([]);
   const [activeTab, setActiveTab] = useState("breakout");
