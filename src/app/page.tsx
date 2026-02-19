@@ -4,36 +4,9 @@
 import React, { useState, useMemo, useCallback } from "react";
 
 const SYMBOLS = [
-  "NVDA",
-  "AAPL",
-  "MSFT",
-  "META",
-  "GOOGL",
-  "AMZN",
-  "TSLA",
-  "AVGO",
-  "AMD",
-  "CRWD",
-  "PANW",
-  "SMCI",
-  "PLTR",
-  "ARM",
-  "AXON",
-  "CAVA",
-  "DECK",
-  "HIMS",
-  "DUOL",
-  "ELF",
-  "ONON",
-  "CELH",
-  "DDOG",
-  "NET",
-  "SNOW",
-  "LLY",
-  "COST",
-  "CMG",
-  "COIN",
-  "NFLX",
+  "NVDA", "AAPL", "MSFT", "META", "GOOGL", "AMZN", "TSLA", "AVGO", "AMD", "CRWD",
+  "PANW", "SMCI", "PLTR", "ARM", "AXON", "CAVA", "DECK", "HIMS", "DUOL", "ELF",
+  "ONON", "CELH", "DDOG", "NET", "SNOW", "LLY", "COST", "CMG", "COIN", "NFLX",
 ];
 
 const PRICE_MAP: Record<string, number> = {
@@ -58,25 +31,20 @@ function generateDemoData(seed = 0) {
     return {
       id: symbol, symbol,
       price: parseFloat((basePrice + (random(-5, 5) * 0.5)).toFixed(2)),
-      ttPass: stage !== "breakout",
-      ttScore: Math.floor(random(3, 9)),
+      ttPass: stage !== "breakout", ttScore: Math.floor(random(3, 9)),
       ma50: parseFloat((basePrice * random(0.95, 1.02)).toFixed(2)),
       ma150: parseFloat((basePrice * random(0.9, 1.05)).toFixed(2)),
       ma200: parseFloat((basePrice * random(0.88, 1.08)).toFixed(2)),
-      pctAboveLow: Math.round(random(20, 95)),
-      pctBelowHigh: Math.round(random(5, 45)),
-      rsPct: Math.round(random(55, 99)),
-      vcpPass: stage === "vcp" || Math.random() > 0.5,
+      pctAboveLow: Math.round(random(20, 95)), pctBelowHigh: Math.round(random(5, 45)),
+      rsPct: Math.round(random(55, 99)), vcpPass: stage === "vcp" || Math.random() > 0.5,
       atrRatio: parseFloat(random(0.3, 0.9).toFixed(2)),
       volRatio: parseFloat(random(0.3, 0.9).toFixed(2)),
-      range10dPct: parseFloat(random(1, 12).toFixed(2)),
-      bbSqueeze: Math.random() > 0.6,
+      range10dPct: parseFloat(random(1, 12).toFixed(2)), bbSqueeze: Math.random() > 0.6,
       breakout: stage === "breakout",
       boQuality: stage === "breakout" ? ["A", "B"][Math.floor(random(0, 2))] : "none",
       pivot: parseFloat((basePrice * random(0.95, 1.05)).toFixed(2)),
       rvol: parseFloat(random(0.8, 2.5).toFixed(2)),
-      priorityScore: Math.floor(random(3, 10)),
-      stage,
+      priorityScore: Math.floor(random(3, 10)), stage,
     };
   };
   const stocks = [
@@ -123,23 +91,18 @@ function MinerviniScreener() {
   const handleSort = useCallback((column: string) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortColumn(column);
-      setSortDirection("desc");
-    }
+    } else { setSortColumn(column); setSortDirection("desc"); }
   }, [sortColumn, sortDirection]);
   const handleDemo = () => {
-    setData(generateDemoData(Date.now()));
-    setSelectedId(null);
-    setToast("Demo data regenerated");
-    setTimeout(() => setToast(""), 2000);
+    setData(generateDemoData(Date.now())); setSelectedId(null);
+    setToast("Demo data regenerated"); setTimeout(() => setToast(""), 2000);
   };
   const handleRunScreener = async () => {
     if (!apiKey) { setToast("Please enter an API key"); setTimeout(() => setToast(""), 2000); return; }
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      setToast("API connection coming soon \u2014 use demo data for now");
+      setToast("API connection coming soon — use demo data for now");
       setTimeout(() => setToast(""), 3000);
     }, 2000);
   };
@@ -180,7 +143,7 @@ function MinerviniScreener() {
     if (key === "price") return `$${val.toFixed(2)}`;
     if (key === "rvol" || key === "atrRatio" || key === "volRatio") return val.toFixed(2);
     if (key === "range10dPct") return `${val.toFixed(1)}%`;
-    if (key === "bbSqueeze") return val ? "\u2713" : "\u2014";
+    if (key === "bbSqueeze") return val ? "✓" : "—";
     return val;
   };
   const getRsColor = (rs: number) => {
@@ -212,7 +175,7 @@ function MinerviniScreener() {
             </div>
           </div>
           <div className="text-xs text-gray-500 font-mono">
-            Ready \u2014 {tabCounts.breakout} breakouts \u00b7 {tabCounts.vcp} VCP \u00b7{" "}{tabCounts.monitor} monitoring
+            Ready — {tabCounts.breakout} breakouts · {tabCounts.vcp} VCP ·{" "}{tabCounts.monitor} monitoring
           </div>
           {toast && (<div className="mt-3 px-3 py-2 bg-blue-500/20 border border-blue-500/50 rounded text-blue-300 text-sm">{toast}</div>)}
         </div>
@@ -221,9 +184,9 @@ function MinerviniScreener() {
         <div className="mb-6 border-b border-gray-800">
           <div className="flex gap-2">
             {[
-              { id: "breakout", label: "\ud83d\udd25 Breakouts", count: tabCounts.breakout },
-              { id: "vcp", label: "\ud83c\udfaf VCP", count: tabCounts.vcp },
-              { id: "monitor", label: "\ud83d\udcca Monitor", count: tabCounts.monitor },
+              { id: "breakout", label: "🔥 Breakouts", count: tabCounts.breakout },
+              { id: "vcp", label: "🎯 VCP", count: tabCounts.vcp },
+              { id: "monitor", label: "📊 Monitor", count: tabCounts.monitor },
             ].map((tab) => (
               <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSelectedId(null); setSortColumn("priorityScore"); setSortDirection("desc"); }}
                 className={`px-4 py-3 font-semibold text-sm border-b-2 transition ${activeTab === tab.id ? "border-emerald-400 text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-300"}`}>
@@ -242,7 +205,7 @@ function MinerviniScreener() {
                 {getTabColumns().map((col) => (
                   <th key={col.key} onClick={() => handleSort(col.key)} className={`px-4 py-3 text-left font-semibold text-gray-400 cursor-pointer hover:text-gray-200 transition ${col.width}`}>
                     {col.label}
-                    {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "\u2191" : "\u2193"}</span>)}
+                    {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>)}
                   </th>
                 ))}
               </tr>
