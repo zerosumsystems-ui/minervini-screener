@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 30;
 
 interface ChartRequest {
-  apiKey: string;
   symbol: string;
 }
 
@@ -34,16 +33,23 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const body: ChartRequest = await request.json();
+    const apiKey = process.env.DATABENTO_API_KEY;
 
-    if (!body.apiKey || !body.symbol) {
+    if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: "Missing apiKey or symbol" },
+        { success: false, error: "DATABENTO_API_KEY environment variable not set" },
+        { status: 500 }
+      );
+    }
+
+    if (!body.symbol) {
+      return NextResponse.json(
+        { success: false, error: "Missing symbol" },
         { status: 400 }
       );
     }
 
     const end = new Date();
-    end.setDate(end.getDate() - 1);
     const start = new Date(end.getTime() - 120 * 24 * 60 * 60 * 1000);
 
     const formData = new URLSearchParams();
@@ -55,7 +61,7 @@ export async function POST(
     formData.append("stype_in", "raw_symbol");
     formData.append("encoding", "json");
 
-    const credentials = Buffer.from(`${body.apiKey}:`).toString("base64");
+    const credentials = Buffer.from(`${apiKey}:`).toString("base64");
 
     const response = await fetch(
       "https://hist.databento.com/v0/timeseries.get_range",
