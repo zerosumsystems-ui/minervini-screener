@@ -53,7 +53,7 @@ export async function POST(
     const start = new Date(end.getTime() - 120 * 24 * 60 * 60 * 1000);
 
     const formData = new URLSearchParams();
-    formData.append("dataset", "XNAS.ITCH");
+    formData.append("dataset", "DBEQ.BASIC");
     formData.append("symbols", body.symbol);
     formData.append("schema", "ohlcv-1d");
     formData.append("start", formatDate(start));
