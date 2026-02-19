@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import {
   runPipeline,
+  postProcessResults,
   ScreenerResult,
 } from '@/lib/screener';
 import {
@@ -30,7 +31,6 @@ interface ScreenerResponse {
 export async function POST(): Promise<NextResponse<ScreenerResponse>> {
   try {
     const apiKey = process.env.DATABENTO_API_KEY;
-
     if (!apiKey) {
       return NextResponse.json(
         {
@@ -84,12 +84,10 @@ export async function POST(): Promise<NextResponse<ScreenerResponse>> {
       );
     }
 
-    // Run screener pipeline
+    // Run screener pipeline for each symbol
     const results: ScreenerResult[] = [];
-
     for (const symbol of CURATED_UNIVERSE) {
       const stockData = bars[symbol];
-
       if (!stockData || stockData.length === 0) {
         console.warn(`No data found for ${symbol}`);
         continue;
@@ -97,7 +95,6 @@ export async function POST(): Promise<NextResponse<ScreenerResponse>> {
 
       try {
         const result = runPipeline(symbol, stockData, benchmarkData);
-
         if (result) {
           results.push(result);
         }
@@ -105,6 +102,9 @@ export async function POST(): Promise<NextResponse<ScreenerResponse>> {
         console.error(`Error screening ${symbol}:`, e);
       }
     }
+
+    // Post-process: assign RS percentile ranks, update template with RS, assign grades
+    postProcessResults(results);
 
     // Sort results by RS score (highest first)
     results.sort((a, b) => b.rs - a.rs);
@@ -118,7 +118,6 @@ export async function POST(): Promise<NextResponse<ScreenerResponse>> {
   } catch (e) {
     console.error('Screener error:', e);
     const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-
     return NextResponse.json(
       {
         success: false,
