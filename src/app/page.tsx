@@ -111,7 +111,6 @@ function MinerviniScreener() {
   const [sortColumn, setSortColumn] = useState("rs");
   const [sortDirection, setSortDirection] = useState("desc");
   const [loading, setLoading] = useState(false);
-  const [apiKey, setApiKey] = useState("");
   const [toast, setToast] = useState("");
   const [ran, setRan] = useState(false);
 
@@ -149,14 +148,13 @@ function MinerviniScreener() {
   }, [sortColumn, sortDirection]);
 
   const handleRunScreener = async () => {
-    if (!apiKey) { setToast("Enter your Databento API key"); setTimeout(() => setToast(""), 3000); return; }
     setLoading(true);
     setToast("");
     try {
       const res = await fetch("/api/screener", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey }),
+        body: JSON.stringify({}),
       });
       const json = await res.json();
       if (!json.success) {
@@ -169,7 +167,7 @@ function MinerviniScreener() {
         setTimeout(() => setToast(""), 3000);
       }
     } catch (e) {
-      setToast("Network error — check your connection");
+      setToast("Network error \u2014 check your connection");
       setTimeout(() => setToast(""), 5000);
     }
     setLoading(false);
@@ -184,7 +182,7 @@ function MinerviniScreener() {
       const res = await fetch("/api/chart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, symbol }),
+        body: JSON.stringify({ symbol }),
       });
       const json = await res.json();
       if (json.success && json.bars) {
@@ -229,7 +227,7 @@ function MinerviniScreener() {
   };
 
   const formatValue = (val: any, key: string) => {
-    if (val === undefined || val === null) return "—";
+    if (val === undefined || val === null) return "\u2014";
     if (key === "price" || key === "ma50" || key === "ma150" || key === "ma200") return `$${Number(val).toFixed(2)}`;
     if (key === "atr") return Number(val).toFixed(2);
     if (key === "distance52wHigh") return `${(Number(val) * 100).toFixed(0)}%`;
@@ -260,9 +258,6 @@ function MinerviniScreener() {
               <span className="text-2xl font-bold text-yellow-400">SEPA</span>
             </div>
             <div className="flex items-center gap-3">
-              <input type="password" placeholder="Databento API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 placeholder-gray-500 w-52 focus:outline-none focus:border-gray-600"
-                onKeyDown={(e) => { if (e.key === "Enter") handleRunScreener(); }} />
               <button onClick={handleRunScreener} disabled={loading}
                 className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-semibold rounded transition disabled:opacity-50 min-w-[120px]">
                 {loading ? "Screening..." : "Run Screener"}
@@ -271,7 +266,7 @@ function MinerviniScreener() {
           </div>
           {ran && (
             <div className="text-xs text-gray-500 font-mono">
-              {data.length} results — {tabCounts.breakout} breakouts · {tabCounts.vcp} VCP · {tabCounts.monitor} trend template
+              {data.length} results \u2014 {tabCounts.breakout} breakouts \u00b7 {tabCounts.vcp} VCP \u00b7 {tabCounts.monitor} trend template
             </div>
           )}
           {toast && (<div className="mt-3 px-3 py-2 bg-blue-500/20 border border-blue-500/50 rounded text-blue-300 text-sm">{toast}</div>)}
@@ -281,14 +276,14 @@ function MinerviniScreener() {
       <div className="max-w-7xl mx-auto px-6 py-6">
         {!ran && !loading && (
           <div className="text-center py-20 text-gray-500">
-            <div className="text-6xl mb-4">📈</div>
-            <div className="text-xl mb-2">Enter your Databento API key and hit Run Screener</div>
+            <div className="text-6xl mb-4">\ud83d\udcc8</div>
+            <div className="text-xl mb-2">Hit Run Screener to scan ~100 NASDAQ stocks</div>
             <div className="text-sm">Screens ~100 liquid US stocks using Minervini SEPA criteria</div>
           </div>
         )}
         {loading && (
           <div className="text-center py-20">
-            <div className="text-4xl mb-4 animate-pulse">⏳</div>
+            <div className="text-4xl mb-4 animate-pulse">\u23f3</div>
             <div className="text-gray-400">Fetching data from Databento and running screener...</div>
             <div className="text-gray-600 text-sm mt-1">This may take up to 60 seconds</div>
           </div>
@@ -298,9 +293,9 @@ function MinerviniScreener() {
             <div className="mb-6 border-b border-gray-800">
               <div className="flex gap-2">
                 {[
-                  { id: "breakout", label: "🔥 Breakouts", count: tabCounts.breakout },
-                  { id: "vcp", label: "🎯 VCP", count: tabCounts.vcp },
-                  { id: "monitor", label: "📊 Trend Template", count: tabCounts.monitor },
+                  { id: "breakout", label: "\ud83d\udd25 Breakouts", count: tabCounts.breakout },
+                  { id: "vcp", label: "\ud83c\udfaf VCP", count: tabCounts.vcp },
+                  { id: "monitor", label: "\ud83d\udcca Trend Template", count: tabCounts.monitor },
                 ].map((tab) => (
                   <button key={tab.id} onClick={() => { setActiveTab(tab.id); setExpandedSymbol(null); }}
                     className={`px-4 py-3 font-semibold text-sm border-b-2 transition ${activeTab === tab.id ? "border-emerald-400 text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-300"}`}>
@@ -321,7 +316,7 @@ function MinerviniScreener() {
                       <th key={col.key} onClick={() => handleSort(col.key)}
                         className="px-4 py-3 text-left font-semibold text-gray-400 cursor-pointer hover:text-gray-200 transition">
                         {col.label}
-                        {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>)}
+                        {sortColumn === col.key && (<span className="ml-1">{sortDirection === "asc" ? "\u2191" : "\u2193"}</span>)}
                       </th>
                     ))}
                   </tr>
@@ -371,10 +366,10 @@ function MinerviniScreener() {
                                   <div><span className="text-gray-500">vs 52w High:</span> <span className="text-gray-300 font-mono">{(stock.distance52wHigh * 100).toFixed(0)}%</span></div>
                                   <div><span className="text-gray-500">vs 52w Low:</span> <span className="text-gray-300 font-mono">{(stock.distance52wLow * 100).toFixed(0)}%</span></div>
                                   <div className="pt-1 border-t border-gray-800 mt-2">
-                                    <span className="text-gray-500">Template:</span> <span className={stock.passesTemplate ? "text-emerald-400" : "text-gray-600"}>{stock.passesTemplate ? "✓ Pass" : "✗ Fail"}</span>
+                                    <span className="text-gray-500">Template:</span> <span className={stock.passesTemplate ? "text-emerald-400" : "text-gray-600"}>{stock.passesTemplate ? "\u2713 Pass" : "\u2717 Fail"}</span>
                                   </div>
-                                  <div><span className="text-gray-500">VCP:</span> <span className={stock.passesVcp ? "text-emerald-400" : "text-gray-600"}>{stock.passesVcp ? "✓ Pass" : "✗ Fail"}</span></div>
-                                  <div><span className="text-gray-500">Breakout:</span> <span className={stock.passesBreakout ? "text-emerald-400" : "text-gray-600"}>{stock.passesBreakout ? "✓ Pass" : "✗ Fail"}</span></div>
+                                  <div><span className="text-gray-500">VCP:</span> <span className={stock.passesVcp ? "text-emerald-400" : "text-gray-600"}>{stock.passesVcp ? "\u2713 Pass" : "\u2717 Fail"}</span></div>
+                                  <div><span className="text-gray-500">Breakout:</span> <span className={stock.passesBreakout ? "text-emerald-400" : "text-gray-600"}>{stock.passesBreakout ? "\u2713 Pass" : "\u2717 Fail"}</span></div>
                                 </div>
                               </div>
                             </td>
