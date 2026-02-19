@@ -1,4 +1,4 @@
-/**
+/**  
  * Minervini SEPA Stock Screener Core Logic
  * Ported from Python implementation
  */
@@ -11,7 +11,7 @@ export const DIST_52W_LOW = 1.30;
 export const MAX_52W_HIGH = 0.75;
 export const RS_MIN_PCT = 70;
 export const RS_IDEAL_PCT = 90;
-export const VCP_ATR_RATIO = 0.70;
+// TEST REPLACEMENTexport const VCP_ATR_RATIO = 0.70;
 export const VCP_VOL_RATIO = 0.80;
 export const VCP_RANGE_MAX = 0.08;
 export const VCP_NEAR_HIGH = 0.88;
