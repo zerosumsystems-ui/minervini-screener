@@ -52,7 +52,7 @@ export async function POST(
     // Get date range for last year
     const { start, end } = getDateRange(252);
 
-    // Fetch benchmark (SPY)
+    // Fetch benchmark (QQQ)
     let benchmarkData;
     try {
       benchmarkData = await fetchBenchmark(body.apiKey, start, end);
@@ -60,7 +60,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            error: 'Failed to fetch benchmark data (SPY)',
+            error: 'Failed to fetch benchmark data (QQQ)',
           },
           { status: 500 }
         );
