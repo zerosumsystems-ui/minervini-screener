@@ -43,6 +43,7 @@ export async function POST(
     }
 
     const end = new Date();
+    end.setDate(end.getDate() - 1);
     const start = new Date(end.getTime() - 120 * 24 * 60 * 60 * 1000);
 
     const formData = new URLSearchParams();
