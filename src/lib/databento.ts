@@ -160,7 +160,7 @@ export function getDateRange(tradingDaysBack: number = 252): {
   start: string;
   end: string;
 } {
-  const end = new Date(); end.setDate(end.getDate() + 1); // +1 because Databento end date is exclusive
+  const end = new Date();
   // Approximate: each year has ~252 trading days
   const start = new Date(end.getTime() - (tradingDaysBack / 252) * 365.25 * 24 * 60 * 60 * 1000);
 
